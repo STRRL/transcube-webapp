@@ -22,6 +22,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetTaskSubtitles(arg1) {
+  return window['go']['main']['App']['GetTaskSubtitles'](arg1);
+}
+
 export function ParseVideoUrl(arg1) {
   return window['go']['main']['App']['ParseVideoUrl'](arg1);
 }

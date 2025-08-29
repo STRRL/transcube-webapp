@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 
 interface VideoPlayerProps {
   src: string
@@ -11,9 +11,24 @@ interface VideoPlayerProps {
   }>
 }
 
-export default function VideoPlayer({ src, poster, subtitles = [] }: VideoPlayerProps) {
+export interface VideoPlayerHandle {
+  seekTo: (timeInSeconds: number) => void
+}
+
+const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, poster, subtitles = [] }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  useImperativeHandle(ref, () => ({
+    seekTo: (timeInSeconds: number) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = timeInSeconds
+        if (videoRef.current.paused) {
+          videoRef.current.play()
+        }
+      }
+    }
+  }))
 
   useEffect(() => {
     // Auto-enable the first subtitle track when video loads
@@ -69,4 +84,8 @@ export default function VideoPlayer({ src, poster, subtitles = [] }: VideoPlayer
       </video>
     </div>
   )
-}
+})
+
+VideoPlayer.displayName = 'VideoPlayer'
+
+export default VideoPlayer

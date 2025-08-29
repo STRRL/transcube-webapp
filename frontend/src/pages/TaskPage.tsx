@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -13,15 +13,10 @@ import {
   Copy,
   Check
 } from 'lucide-react'
-import BilingualSubtitle, { SubtitleEntry } from '@/components/BilingualSubtitle'
-import VideoPlayer from '@/components/VideoPlayer'
-import { GetAllTasks } from '../../wailsjs/go/main/App'
-import { types } from '../../wailsjs/go/models'
-
-// Empty subtitle data - will be populated from backend
-const mockSubtitles: SubtitleEntry[] = [
-  // Subtitles will be loaded from backend
-]
+import BilingualSubtitle from '@/components/BilingualSubtitle'
+import VideoPlayer, { VideoPlayerHandle } from '@/components/VideoPlayer'
+import { GetAllTasks, GetTaskSubtitles } from '../../wailsjs/go/main/App'
+import { types, main } from '../../wailsjs/go/models'
 
 // Empty summary data
 const mockSummary = {
@@ -38,6 +33,8 @@ export default function TaskPage() {
   const [copied, setCopied] = useState(false)
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [subtitles, setSubtitles] = useState<any[]>([])
+  const [transcriptSubtitles, setTranscriptSubtitles] = useState<main.SubtitleEntry[]>([])
+  const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
 
   useEffect(() => {
     loadTask()
@@ -93,6 +90,14 @@ export default function TaskPage() {
           } catch (err) {
             console.error('Failed to load video:', err)
           }
+          
+          // Load transcript subtitles for display
+          try {
+            const subs = await GetTaskSubtitles(task.id)
+            setTranscriptSubtitles(subs)
+          } catch (err) {
+            console.error('Failed to load transcript:', err)
+          }
         }
       }
     } catch (err) {
@@ -132,12 +137,32 @@ export default function TaskPage() {
     }
   }
 
+  const handleTimeClick = (timeString: string) => {
+    // Parse time string like "00:00:02,520" to seconds
+    const parts = timeString.split(':')
+    if (parts.length >= 3) {
+      const hours = parseInt(parts[0], 10)
+      const minutes = parseInt(parts[1], 10)
+      const secondsParts = parts[2].split(',')
+      const seconds = parseInt(secondsParts[0], 10)
+      const milliseconds = secondsParts[1] ? parseInt(secondsParts[1], 10) / 1000 : 0
+      
+      const totalSeconds = hours * 3600 + minutes * 60 + seconds + milliseconds
+      
+      // Seek video to this time
+      if (videoPlayerRef.current) {
+        videoPlayerRef.current.seekTo(totalSeconds)
+      }
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Video Player Area */}
       <div className="bg-black relative h-[60vh] flex-shrink-0">
         {video.status === 'done' && videoSrc ? (
           <VideoPlayer 
+            ref={videoPlayerRef}
             src={videoSrc}
             poster={video.thumbnail}
             subtitles={subtitles}
@@ -286,9 +311,10 @@ export default function TaskPage() {
             </TabsContent>
 
             <TabsContent value="transcript" className="space-y-4">
-              {mockSubtitles.length > 0 ? (
+              {transcriptSubtitles.length > 0 ? (
                 <BilingualSubtitle 
-                  subtitles={mockSubtitles}
+                  subtitles={transcriptSubtitles}
+                  onTimeClick={handleTimeClick}
                 />
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

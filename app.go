@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 	"transcube-webapp/internal/services"
 	"transcube-webapp/internal/types"
@@ -14,14 +15,15 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	depChecker  *services.DependencyChecker
-	storage     *services.Storage
-	taskManager *services.TaskManager
-	downloader  *services.Downloader
-	yapRunner   *services.YapRunner
-	mediaServer *services.MediaServer
-	logger      *slog.Logger
+	ctx           context.Context
+	depChecker    *services.DependencyChecker
+	storage       *services.Storage
+	taskManager   *services.TaskManager
+	downloader    *services.Downloader
+	yapRunner     *services.YapRunner
+	mediaServer   *services.MediaServer
+	logger        *slog.Logger
+	currentTaskID string
 }
 
 // NewApp creates a new App application struct
@@ -129,6 +131,7 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	}
 	
 	a.logger.Info("Task created", "taskId", task.ID)
+	a.currentTaskID = task.ID
 	
 	// Start processing in background
 	go a.processTask(task)
@@ -162,6 +165,119 @@ func (a *App) RetryTask(taskID string) (*types.Task, error) {
 // GetAllTasks returns all processed tasks
 func (a *App) GetAllTasks() ([]*types.Task, error) {
 	return a.storage.GetAllTasks()
+}
+
+// SubtitleEntry represents a single subtitle entry
+type SubtitleEntry struct {
+	Index     int    `json:"index"`
+	Timestamp string `json:"timestamp"`
+	StartTime string `json:"startTime"`
+	EndTime   string `json:"endTime"`
+	English   string `json:"english"`
+	Chinese   string `json:"chinese,omitempty"`
+}
+
+// GetTaskSubtitles returns parsed subtitles for a task
+func (a *App) GetTaskSubtitles(taskID string) ([]SubtitleEntry, error) {
+	a.logger.Info("Getting subtitles for task", "taskId", taskID)
+	
+	// Get task to find work directory
+	tasks, err := a.storage.GetAllTasks()
+	if err != nil {
+		return nil, err
+	}
+	
+	var task *types.Task
+	for _, t := range tasks {
+		if t.ID == taskID {
+			task = t
+			break
+		}
+	}
+	
+	if task == nil {
+		return nil, fmt.Errorf("task not found")
+	}
+	
+	// Read subtitle file
+	subtitlePath := fmt.Sprintf("%s/subs_%s.srt", task.WorkDir, task.SourceLang)
+	content, err := os.ReadFile(subtitlePath)
+	if err != nil {
+		a.logger.Error("Failed to read subtitle file", "path", subtitlePath, "error", err)
+		return nil, err
+	}
+	
+	// Parse SRT format
+	entries := parseSRT(string(content))
+	a.logger.Info("Parsed subtitles", "taskId", taskID, "entries", len(entries))
+	return entries, nil
+}
+
+// parseSRT parses SRT subtitle format
+func parseSRT(content string) []SubtitleEntry {
+	var entries []SubtitleEntry
+	lines := strings.Split(content, "\n")
+	
+	i := 0
+	for i < len(lines) {
+		// Skip empty lines
+		if strings.TrimSpace(lines[i]) == "" {
+			i++
+			continue
+		}
+		
+		// Parse index
+		index := 0
+		fmt.Sscanf(lines[i], "%d", &index)
+		i++
+		
+		if i >= len(lines) {
+			break
+		}
+		
+		// Parse timestamp
+		timestampLine := strings.TrimSpace(lines[i])
+		if !strings.Contains(timestampLine, "-->") {
+			i++
+			continue
+		}
+		
+		parts := strings.Split(timestampLine, "-->")
+		if len(parts) != 2 {
+			i++
+			continue
+		}
+		
+		startTime := strings.TrimSpace(parts[0])
+		endTime := strings.TrimSpace(parts[1])
+		
+		// Create display timestamp (just the start time in a shorter format)
+		timestamp := startTime
+		if len(timestamp) > 8 {
+			timestamp = timestamp[:8] // Remove milliseconds for display
+		}
+		
+		i++
+		
+		// Parse subtitle text (can be multiple lines)
+		var textLines []string
+		for i < len(lines) && strings.TrimSpace(lines[i]) != "" {
+			textLines = append(textLines, lines[i])
+			i++
+		}
+		
+		if len(textLines) > 0 {
+			entries = append(entries, SubtitleEntry{
+				Index:     index,
+				Timestamp: timestamp,
+				StartTime: startTime,
+				EndTime:   endTime,
+				English:   strings.Join(textLines, " "),
+			})
+		}
+	}
+	
+	return entries
 }
 
 // DeleteTask deletes a task and its associated files
@@ -271,4 +387,9 @@ func (a *App) processTask(task *types.Task) {
 	// For now, mark as done (translation and summary will be added later)
 	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
 	a.logger.Info("Task completed successfully", "taskId", task.ID)
+	
+	// Clear current task ID
+	if a.currentTaskID == task.ID {
+		a.currentTaskID = ""
+	}
 }

@@ -1,3 +1,30 @@
+export namespace main {
+	
+	export class SubtitleEntry {
+	    index: number;
+	    timestamp: string;
+	    startTime: string;
+	    endTime: string;
+	    english: string;
+	    chinese?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SubtitleEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.timestamp = source["timestamp"];
+	        this.startTime = source["startTime"];
+	        this.endTime = source["endTime"];
+	        this.english = source["english"];
+	        this.chinese = source["chinese"];
+	    }
+	}
+
+}
+
 export namespace types {
 	
 	export class DependencyStatus {
