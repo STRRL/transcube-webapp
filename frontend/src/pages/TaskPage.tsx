@@ -5,15 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { 
   Play, 
-  Download,
   ChevronLeft,
   Clock,
   FileText,
   Languages,
   Brain,
   Copy,
-  Check,
-  ExternalLink
+  Check
 } from 'lucide-react'
 import BilingualSubtitle, { SubtitleEntry } from '@/components/BilingualSubtitle'
 import VideoPlayer from '@/components/VideoPlayer'
@@ -162,38 +160,24 @@ export default function TaskPage() {
         </Button>
         <div className="flex gap-2">
           {video.videoId && (
-            <>
-              <Button 
-                variant="secondary" 
-                size="sm"
-                onClick={() => window.open(`https://youtube.com/watch?v=${video.videoId}`, '_blank')}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open in YouTube
-              </Button>
-              <Button 
-                variant="secondary" 
-                size="sm"
-                onClick={handleCopyLink}
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
-                  </>
-                )}
-              </Button>
-            </>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={handleCopyLink}
+            >
+              {copied ? (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Link
+                </>
+              )}
+            </Button>
           )}
-          <Button size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export Logs
-          </Button>
         </div>
       </div>
 
@@ -213,12 +197,6 @@ export default function TaskPage() {
                       {video.duration}
                     </span>
                   )}
-                  <Badge variant="outline">
-                    Language: {video.sourceLang || 'Unknown'}
-                  </Badge>
-                  <Badge variant={video.status === 'done' ? 'default' : 'secondary'}>
-                    {video.status}
-                  </Badge>
                 </div>
               </div>
             </div>
