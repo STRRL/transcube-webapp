@@ -58,18 +58,36 @@ export default function TaskPage() {
             // Use the media server endpoint
             setVideoSrc(`/media/${task.id}/video.mp4`)
             
-            // Load subtitles via media server
-            const subtitleFiles = [
-              { file: 'captions.vtt', label: 'English', lang: 'en' },
-              { file: 'subs_en.srt', label: 'English', lang: 'en' },
-              { file: 'translated_zh.srt', label: 'Chinese', lang: 'zh' },
-            ]
+            // Load subtitles via media server based on source language
+            const subtitleFiles = []
             
-            const loadedSubs = subtitleFiles.map(sub => ({
+            // Add the transcribed subtitle based on source language
+            if (task.sourceLang) {
+              const langLabels: Record<string, string> = {
+                'en': 'English',
+                'zh': 'Chinese',
+                'es': 'Spanish',
+                'fr': 'French',
+                'de': 'German',
+                'ja': 'Japanese',
+                'ko': 'Korean',
+                'ru': 'Russian',
+                'pt': 'Portuguese',
+                'it': 'Italian'
+              }
+              
+              subtitleFiles.push({
+                file: `subs_${task.sourceLang}.vtt`,
+                label: langLabels[task.sourceLang] || task.sourceLang,
+                lang: task.sourceLang
+              })
+            }
+            
+            const loadedSubs = subtitleFiles.map((sub, index) => ({
               src: `/media/${task.id}/${sub.file}`,
               label: sub.label,
               language: sub.lang,
-              default: sub.lang === 'en'
+              default: index === 0  // 第一个字幕轨道设为默认
             }))
             setSubtitles(loadedSubs)
           } catch (err) {

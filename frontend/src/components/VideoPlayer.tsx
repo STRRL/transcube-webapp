@@ -16,22 +16,31 @@ export default function VideoPlayer({ src, poster, subtitles = [] }: VideoPlayer
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Apply custom styles to video subtitles
-    if (videoRef.current) {
-      // Force subtitle track to be shown if it's the default
-      const tracks = videoRef.current.textTracks
-      if (tracks.length > 0) {
-        // Enable the first/default subtitle track
-        for (let i = 0; i < tracks.length; i++) {
-          const track = tracks[i]
-          if (track.kind === 'subtitles' || track.kind === 'captions') {
-            // Set the first subtitle track as showing if it's default
-            const trackElement = videoRef.current.querySelector(`track[srclang="${track.language}"]`)
-            if (trackElement?.hasAttribute('default')) {
-              track.mode = 'showing'
+    // Auto-enable the first subtitle track when video loads
+    if (videoRef.current && subtitles.length > 0) {
+      const video = videoRef.current
+      
+      // Wait for tracks to be loaded
+      const enableDefaultTrack = () => {
+        const tracks = video.textTracks
+        if (tracks && tracks.length > 0) {
+          // Find and enable the default track
+          for (let i = 0; i < tracks.length; i++) {
+            const track = tracks[i]
+            if (track.kind === 'subtitles') {
+              // Enable the first subtitle track
+              track.mode = i === 0 ? 'showing' : 'hidden'
             }
           }
         }
+      }
+      
+      // Try to enable immediately and also when metadata loads
+      enableDefaultTrack()
+      video.addEventListener('loadedmetadata', enableDefaultTrack)
+      
+      return () => {
+        video.removeEventListener('loadedmetadata', enableDefaultTrack)
       }
     }
   }, [subtitles])
