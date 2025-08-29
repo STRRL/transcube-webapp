@@ -1,28 +1,100 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { 
   Clock, 
   FileText, 
   Languages, 
   Brain,
   Download,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react'
-import { processedVideos } from '@/services/processedVideos'
+import { GetAllTasks, DeleteTask } from '../../wailsjs/go/main/App'
+import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
+  const [processedVideos, setProcessedVideos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [videoToDelete, setVideoToDelete] = useState<any>(null)
+  const [deleting, setDeleting] = useState(false)
 
-  const filteredVideos = processedVideos.filter(video =>
-    video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    video.channel.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    video.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  useEffect(() => {
+    loadTasks()
+    
+    // Listen for reload-videos event from backend
+    const cleanup = EventsOn('reload-videos', () => {
+      console.log('Received reload-videos event from backend')
+      loadTasks()
+    })
+    
+    // Cleanup on unmount
+    return () => {
+      EventsOff('reload-videos')
+    }
+  }, [])
+
+  const loadTasks = async () => {
+    try {
+      const tasks = await GetAllTasks()
+      console.log('All tasks loaded:', tasks)
+      // Filter only completed tasks - handle null case
+      const completed = (tasks || []).filter(task => task.status === 'done')
+      console.log('Completed tasks:', completed)
+      setProcessedVideos(completed)
+    } catch (err) {
+      console.error('Failed to load tasks:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!videoToDelete) return
+    
+    setDeleting(true)
+    try {
+      console.log('Deleting video:', videoToDelete.id)
+      await DeleteTask(videoToDelete.id)
+      console.log('Delete successful')
+      
+      // Close dialog immediately
+      setDeleteDialogOpen(false)
+      setVideoToDelete(null)
+      
+      // The reload will be triggered by the backend event
+      // No need to manually reload here
+    } catch (err) {
+      console.error('Delete failed:', err)
+      alert(`Failed to delete video: ${err}`)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const filteredVideos = processedVideos.filter(video => {
+    if (!searchQuery) return true
+    const title = video.title || ''
+    const channel = video.channel || ''
+    return title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           channel.toLowerCase().includes(searchQuery.toLowerCase())
+  })
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -60,67 +132,81 @@ export default function HomePage() {
       </div>
 
       {/* Video Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 relative">
+        {/* Loading overlay */}
+        {loading && processedVideos.length > 0 && (
+          <div className="absolute inset-0 bg-background/80 z-50 flex items-center justify-center rounded">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <p className="mt-2 text-sm text-muted-foreground">Refreshing...</p>
+            </div>
+          </div>
+        )}
         {filteredVideos.map(video => (
           <Card 
             key={video.id} 
-            className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => navigate(`/task/${video.id}`)}
+            className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group"
+            onClick={(e) => {
+              // Check if the click target is the delete button or its child
+              const target = e.target as HTMLElement
+              if (target.closest('button')) {
+                return // Don't navigate if clicking on button
+              }
+              navigate(`/task/${video.id}`)
+            }}
           >
             <div className="aspect-video relative bg-muted">
-              <img 
-                src={video.thumbnail} 
-                alt={video.title}
-                className="object-cover w-full h-full"
-                onError={(e) => {
-                  e.currentTarget.src = `https://via.placeholder.com/640x360/09090b/ffffff?text=${encodeURIComponent(video.title.substring(0, 20))}`
+              {video.thumbnail && (
+                <img 
+                  src={video.thumbnail} 
+                  alt={video.title || 'Video'}
+                  className="object-cover w-full h-full"
+                  onError={(e) => {
+                    e.currentTarget.src = `https://via.placeholder.com/640x360/09090b/ffffff?text=${encodeURIComponent(video.title?.substring(0, 20) || 'Video')}`
+                  }}
+                />
+              )}
+              {/* Delete button - only visible on hover */}
+              <button
+                className="absolute top-2 right-2 p-1.5 rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setVideoToDelete(video)
+                  setDeleteDialogOpen(true)
                 }}
-              />
-              <Badge className="absolute top-2 left-2" variant="secondary">
-                {video.channel}
-              </Badge>
-              <Badge className="absolute top-2 right-2" variant="secondary">
-                <Clock className="h-3 w-3 mr-1" />
-                {video.duration}
-              </Badge>
-              
-              {/* Status Badges */}
-              <div className="absolute bottom-2 left-2 flex gap-1">
-                {video.hasTranscript && (
-                  <div className="bg-background/90 rounded p-1">
-                    <FileText className="h-3 w-3" />
-                  </div>
-                )}
-                {video.hasTranslation && (
-                  <div className="bg-background/90 rounded p-1">
-                    <Languages className="h-3 w-3" />
-                  </div>
-                )}
-                {video.hasSummary && (
-                  <div className="bg-background/90 rounded p-1">
-                    <Brain className="h-3 w-3" />
-                  </div>
-                )}
-              </div>
-              
+                type="button"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
             
             <CardContent className="p-4">
-              <h3 className="font-medium line-clamp-2 text-sm mb-1">{video.title}</h3>
-              <p className="text-xs text-muted-foreground mb-2">
-                Processed {formatDate(video.processedAt)} • {video.fileSize}
+              <h3 className="font-medium line-clamp-2 text-sm mb-2">
+                {video.title || 'Untitled Video'}
+              </h3>
+              
+              <p className="text-xs text-muted-foreground mb-3">
+                {video.completedAt ? `Processed ${formatDate(video.completedAt)}` : 
+                 video.createdAt ? `Started ${formatDate(video.createdAt)}` : 'Processing...'}
               </p>
               
-              {/* Tags */}
-              {video.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {video.tags.slice(0, 3).map(tag => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {video.channel && (
+                  <span className="flex items-center gap-1">
+                    {video.channel}
+                  </span>
+                )}
+                {video.channel && video.duration && (
+                  <span>•</span>
+                )}
+                {video.duration && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {video.duration}
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -128,9 +214,32 @@ export default function HomePage() {
 
       {filteredVideos.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No videos found matching your search.</p>
+          <p className="text-muted-foreground">No videos processed yet. Click "New Transcription" to get started.</p>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{videoToDelete?.title || 'this video'}" and all its associated files. 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete} 
+              className="bg-red-500 hover:bg-red-600"
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

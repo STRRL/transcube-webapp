@@ -6,9 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertCircle, ChevronLeft, Download, CheckCircle2, XCircle } from 'lucide-react'
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
-import { MockService } from '@/services/mock'
-
-const mockService = new MockService()
+import { CheckDependencies, StartTranscription, GetCurrentTask } from '../../wailsjs/go/main/App'
 
 export default function NewTranscriptionPage() {
   const navigate = useNavigate()
@@ -25,87 +23,74 @@ export default function NewTranscriptionPage() {
   const [estimatedTime, setEstimatedTime] = useState('')
   
   const [dependencies, setDependencies] = useState({
-    ytdlp: true,
-    ffmpeg: true,
-    yap: true
+    ytdlp: false,
+    ffmpeg: false,
+    yap: false
   })
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
 
-  // Simulate task processing
-  const simulateProcessing = () => {
-    setIsProcessing(true)
-    setTaskStage('downloading')
-    setTaskProgress(0)
-    
-    // Simulate downloading
-    let progress = 0
-    const downloadInterval = setInterval(() => {
-      progress += Math.random() * 20
-      setTaskProgress(Math.min(progress, 100))
-      setTaskDetail(`Downloading audio... ${Math.round(progress)}%`)
-      setEstimatedTime('~2 minutes')
-      
-      if (progress >= 100) {
-        clearInterval(downloadInterval)
-        setTaskStage('transcribing')
-        simulateTranscribing()
-      }
-    }, 500)
+  useEffect(() => {
+    // Check dependencies on mount
+    checkDependencies()
+    // Poll for task status if processing
+    if (isProcessing && currentTaskId) {
+      const interval = setInterval(pollTaskStatus, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [isProcessing, currentTaskId])
+
+  const checkDependencies = async () => {
+    try {
+      const status = await CheckDependencies()
+      setDependencies(status)
+    } catch (err) {
+      console.error('Failed to check dependencies:', err)
+    }
   }
 
-  const simulateTranscribing = () => {
-    setTaskProgress(0)
-    let progress = 0
-    
-    const transcribeInterval = setInterval(() => {
-      progress += Math.random() * 15
-      setTaskProgress(Math.min(progress, 100))
-      setTaskDetail(`Processing audio segments...`)
-      setEstimatedTime('~3 minutes')
-      
-      if (progress >= 100) {
-        clearInterval(transcribeInterval)
-        setTaskStage('translating')
-        simulateTranslating()
+  const pollTaskStatus = async () => {
+    try {
+      const task = await GetCurrentTask()
+      if (task) {
+        // Map backend status to frontend TaskStage
+        const stageMap: Record<string, TaskStage> = {
+          'pending': 'pending',
+          'downloading': 'downloading',
+          'transcribing': 'transcribing',
+          'translating': 'translating',
+          'summarizing': 'summarizing',
+          'done': 'done',
+          'failed': 'failed'
+        }
+        setTaskStage(stageMap[task.status] || 'pending')
+        setTaskProgress(task.progress)
+        
+        if (task.status === 'done') {
+          setIsProcessing(false)
+          setTimeout(() => navigate('/'), 2000)
+        } else if (task.status === 'failed') {
+          setIsProcessing(false)
+          setError(task.error || 'Task failed')
+        }
       }
-    }, 600)
+    } catch (err) {
+      console.error('Failed to get task status:', err)
+    }
   }
 
-  const simulateTranslating = () => {
-    setTaskProgress(0)
-    let progress = 0
-    
-    const translateInterval = setInterval(() => {
-      progress += Math.random() * 25
-      setTaskProgress(Math.min(progress, 100))
-      setTaskDetail(`Translating to Chinese...`)
-      setEstimatedTime('~1 minute')
+  const startProcessing = async () => {
+    try {
+      setIsProcessing(true)
+      setTaskStage('pending')
+      setError('')
       
-      if (progress >= 100) {
-        clearInterval(translateInterval)
-        setTaskStage('summarizing')
-        simulateSummarizing()
-      }
-    }, 400)
-  }
-
-  const simulateSummarizing = () => {
-    setTaskProgress(0)
-    let progress = 0
-    
-    const summarizeInterval = setInterval(() => {
-      progress += Math.random() * 30
-      setTaskProgress(Math.min(progress, 100))
-      setTaskDetail(`Generating AI summary...`)
-      setEstimatedTime('~30 seconds')
-      
-      if (progress >= 100) {
-        clearInterval(summarizeInterval)
-        setTaskStage('done')
-        setTimeout(() => {
-          navigate('/')
-        }, 2000)
-      }
-    }, 300)
+      const task = await StartTranscription(url, sourceLang)
+      setCurrentTaskId(task.id)
+      setTaskStage('downloading')
+    } catch (err: any) {
+      setIsProcessing(false)
+      setError(err.message || 'Failed to start processing')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -122,7 +107,7 @@ export default function NewTranscriptionPage() {
     }
 
     setError('')
-    simulateProcessing()
+    startProcessing()
   }
 
   const handleCancel = () => {
@@ -133,7 +118,7 @@ export default function NewTranscriptionPage() {
 
   const handleRetry = () => {
     setTaskStage('pending')
-    simulateProcessing()
+    startProcessing()
   }
 
   return (

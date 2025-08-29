@@ -78,3 +78,4 @@ const result = await NewMethod("test");
 - Frontend dev server runs on http://localhost:34115 during development
 - Wails embeds the frontend dist into the Go binary for production builds
 - Context is passed to backend methods for lifecycle management
+- **IMPORTANT**: Do NOT proactively run `wails dev` after making changes. Let the user verify and run the development server themselves

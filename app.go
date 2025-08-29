@@ -3,25 +3,272 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
+	"transcube-webapp/internal/services"
+	"transcube-webapp/internal/types"
+	
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	depChecker  *services.DependencyChecker
+	storage     *services.Storage
+	taskManager *services.TaskManager
+	downloader  *services.Downloader
+	yapRunner   *services.YapRunner
+	mediaServer *services.MediaServer
+	logger      *slog.Logger
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	// Setup JSON logger
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	slog.SetDefault(logger)
+	
+	storage := services.NewStorage("")
+	return &App{
+		depChecker:  services.NewDependencyChecker(),
+		storage:     storage,
+		taskManager: services.NewTaskManager(storage),
+		downloader:  services.NewDownloader(storage),
+		yapRunner:   services.NewYapRunner(storage),
+		mediaServer: services.NewMediaServer(storage),
+		logger:      logger,
+	}
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.logger.Info("TransCube starting up")
+	
+	// Ensure workspace exists
+	if err := a.storage.EnsureWorkspace(); err != nil {
+		a.logger.Error("Failed to ensure workspace", "error", err)
+	} else {
+		a.logger.Info("Workspace ready", "path", a.storage.GetWorkspace())
+	}
+	
+	// Log dependency status
+	deps := a.depChecker.Check()
+	a.logger.Info("Dependency check", 
+		"yt-dlp", deps.YtDlp,
+		"ffmpeg", deps.FFmpeg,
+		"yap", deps.Yap)
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
+// CheckDependencies checks if required tools are installed
+func (a *App) CheckDependencies() types.DependencyStatus {
+	return a.depChecker.Check()
+}
+
+// GetSettings returns current application settings
+func (a *App) GetSettings() types.Settings {
+	return types.Settings{
+		Workspace:     a.storage.GetWorkspace(),
+		SourceLang:    "en",
+		APIProvider:   "gemini",
+		APIKey:        "",
+		SummaryLength: "medium",
+		Temperature:   0.3,
+		MaxTokens:     4096,
+	}
+}
+
+// UpdateSettings updates application settings
+func (a *App) UpdateSettings(settings types.Settings) types.Settings {
+	if settings.Workspace != "" {
+		a.storage.SetWorkspace(settings.Workspace)
+		a.storage.EnsureWorkspace()
+	}
+	return settings
+}
+
+// ParseVideoUrl parses a YouTube URL and returns video metadata
+func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
+	a.logger.Debug("Parsing video URL", "url", url)
+	
+	info, err := a.downloader.GetVideoInfo(url)
+	if err != nil {
+		a.logger.Error("Failed to get video info", "url", url, "error", err)
+		return nil, err
+	}
+	
+	a.logger.Info("Video metadata retrieved", 
+		"id", info.ID,
+		"title", info.Title,
+		"channel", info.Channel,
+		"duration", info.Duration)
+	
+	return &types.VideoMetadata{
+		ID:        info.ID,
+		Title:     info.Title,
+		Channel:   info.Channel,
+		Duration:  int(info.Duration),
+		Thumbnail: info.Thumbnail,
+	}, nil
+}
+
+// StartTranscription starts a new transcription task
+func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, error) {
+	a.logger.Info("Starting new transcription task", "url", url, "sourceLang", sourceLang)
+	
+	// Create new task
+	task, err := a.taskManager.CreateTask(url, sourceLang)
+	if err != nil {
+		a.logger.Error("Failed to create task", "error", err)
+		return nil, err
+	}
+	
+	a.logger.Info("Task created", "taskId", task.ID)
+	
+	// Start processing in background
+	go a.processTask(task)
+	
+	return task, nil
+}
+
+// GetCurrentTask returns the current running task
+func (a *App) GetCurrentTask() *types.Task {
+	return a.taskManager.GetCurrentTask()
+}
+
+// RetryTask retries a failed task
+func (a *App) RetryTask(taskID string) (*types.Task, error) {
+	task := a.taskManager.GetCurrentTask()
+	if task == nil || task.ID != taskID {
+		return nil, fmt.Errorf("task not found")
+	}
+	
+	err := a.taskManager.RetryTask()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Start processing in background
+	go a.processTask(task)
+	
+	return task, nil
+}
+
+// GetAllTasks returns all processed tasks
+func (a *App) GetAllTasks() ([]*types.Task, error) {
+	return a.storage.GetAllTasks()
+}
+
+// DeleteTask deletes a task and its associated files
+func (a *App) DeleteTask(taskID string) error {
+	a.logger.Info("Deleting task", "taskId", taskID)
+	err := a.storage.DeleteTask(taskID)
+	if err != nil {
+		a.logger.Error("Failed to delete task", "taskId", taskID, "error", err)
+		return fmt.Errorf("failed to delete task: %v", err)
+	}
+	a.logger.Info("Task deleted successfully", "taskId", taskID)
+	
+	// Emit event to frontend to reload videos
+	runtime.EventsEmit(a.ctx, "reload-videos")
+	
+	return nil
+}
+
+
+// processTask handles the actual task processing
+func (a *App) processTask(task *types.Task) {
+	a.logger.Info("Processing task started", "taskId", task.ID, "url", task.URL)
+	
+	// Update status to downloading
+	a.taskManager.UpdateTaskStatus(types.TaskStatusDownloading, 10)
+	a.logger.Debug("Task status updated", "taskId", task.ID, "status", "downloading")
+	
+	// Get video info
+	a.logger.Debug("Fetching video info", "taskId", task.ID)
+	info, err := a.downloader.GetVideoInfo(task.URL)
+	if err != nil {
+		a.logger.Error("Failed to get video info", "taskId", task.ID, "error", err)
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to get video info: %v", err))
+		return
+	}
+	a.logger.Info("Video info retrieved", "taskId", task.ID, "videoId", info.ID, "title", info.Title)
+	
+	// Update task metadata
+	duration := time.Duration(info.Duration) * time.Second
+	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
+	
+	err = a.taskManager.UpdateTaskMetadata(
+		info.ID,
+		info.Title,
+		info.Channel,
+		durationStr,
+		info.Thumbnail,
+	)
+	if err != nil {
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to update metadata: %v", err))
+		return
+	}
+	
+	// Create work directory
+	workDir := a.storage.GetTaskDir(info.Title, info.ID)
+	
+	// Ensure work directory exists
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		a.logger.Error("Failed to create work directory", "taskId", task.ID, "path", workDir, "error", err)
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to create work directory: %v", err))
+		return
+	}
+	a.logger.Info("Work directory created", "taskId", task.ID, "path", workDir)
+	
+	// Update task with work directory
+	task.WorkDir = workDir
+	
+	// Now save metadata after directory is created
+	if err := a.storage.SaveMetadata(task); err != nil {
+		a.logger.Error("Failed to save task metadata", "taskId", task.ID, "error", err)
+	}
+	
+	// Download video
+	a.taskManager.UpdateTaskStatus(types.TaskStatusDownloading, 30)
+	a.logger.Info("Downloading video", "taskId", task.ID)
+	err = a.downloader.DownloadVideo(task.URL, workDir)
+	if err != nil {
+		a.logger.Error("Failed to download video", "taskId", task.ID, "error", err)
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to download video: %v", err))
+		return
+	}
+	a.logger.Info("Video downloaded successfully", "taskId", task.ID)
+	
+	// Extract audio for transcription
+	videoPath := fmt.Sprintf("%s/video.mp4", workDir)
+	audioPath := fmt.Sprintf("%s/audio.aac", workDir)
+	a.logger.Info("Extracting audio from video", "taskId", task.ID)
+	err = a.downloader.ExtractAudio(videoPath, audioPath)
+	if err != nil {
+		a.logger.Error("Failed to extract audio", "taskId", task.ID, "error", err)
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to extract audio: %v", err))
+		return
+	}
+	a.logger.Info("Audio extracted successfully", "taskId", task.ID)
+	
+	// Always use yap for transcription
+	a.taskManager.UpdateTaskStatus(types.TaskStatusTranscribing, 60)
+	a.logger.Info("Starting transcription with yap", "taskId", task.ID, "lang", task.SourceLang)
+	err = a.yapRunner.Transcribe(audioPath, workDir, task.SourceLang)
+	if err != nil {
+		a.logger.Error("Failed to transcribe", "taskId", task.ID, "error", err)
+		a.taskManager.SetTaskError(fmt.Sprintf("Failed to transcribe: %v", err))
+		return
+	}
+	a.logger.Info("Transcription complete", "taskId", task.ID)
+	
+	// For now, mark as done (translation and summary will be added later)
+	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
+	a.logger.Info("Task completed successfully", "taskId", task.ID)
 }

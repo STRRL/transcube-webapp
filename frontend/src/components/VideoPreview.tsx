@@ -14,6 +14,7 @@ import {
   XCircle,
   Globe
 } from 'lucide-react'
+import { ParseVideoUrl } from '../../wailsjs/go/main/App'
 
 export interface VideoMetadata {
   id: string
@@ -38,45 +39,53 @@ interface VideoPreviewProps {
   showDetails?: boolean
 }
 
-// Mock function to simulate URL parsing - will be replaced with actual API
 async function parseYouTubeUrl(url: string): Promise<VideoMetadata | null> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000))
-  
-  // Extract video ID from various YouTube URL formats
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /^([^&\n?#]+)$/ // Just the video ID
-  ]
-  
-  let videoId = null
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) {
-      videoId = match[1]
-      break
+  try {
+    const metadata = await ParseVideoUrl(url)
+    if (!metadata) return null
+    
+    // Convert duration from seconds to readable format
+    const duration = metadata.duration || 0
+    const hours = Math.floor(duration / 3600)
+    const minutes = Math.floor((duration % 3600) / 60)
+    const seconds = duration % 60
+    
+    let durationStr = ''
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m`
+    } else {
+      durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
     }
-  }
-
-  if (!videoId) {
-    return null
-  }
-
-  // Mock metadata - in real implementation, this would call yt-dlp
-  return {
-    id: videoId,
-    title: 'Building Modern Web Applications with React and TypeScript',
-    channel: 'Tech Education',
-    channelId: 'UC_x5XG1OV2P6uZZ5FSM9Ttw',
-    duration: '45:32',
-    publishedAt: '2024-01-15',
-    thumbnail: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-    views: '125,432',
-    likes: '5,234',
-    description: 'In this comprehensive tutorial, we explore modern web development using React 18 and TypeScript. Learn best practices, performance optimization, and scalable architecture patterns.',
-    isValid: true,
-    hasSubtitles: true,
-    availableLanguages: ['en', 'en-auto', 'es', 'fr', 'de']
+    
+    return {
+      id: metadata.id,
+      title: metadata.title,
+      channel: metadata.channel,
+      channelId: '',
+      duration: durationStr,
+      publishedAt: metadata.publishedAt || new Date().toISOString(),
+      thumbnail: metadata.thumbnail,
+      views: '',
+      likes: '',
+      description: '',
+      isValid: true,
+      hasSubtitles: false
+    }
+  } catch (err: any) {
+    return {
+      id: '',
+      title: '',
+      channel: '',
+      channelId: '',
+      duration: '',
+      publishedAt: '',
+      thumbnail: '',
+      views: '',
+      likes: '',
+      description: '',
+      isValid: false,
+      error: err.message || 'Failed to parse URL'
+    }
   }
 }
 

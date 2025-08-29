@@ -12,13 +12,19 @@ import {
   AlertCircle,
   CheckCircle2
 } from 'lucide-react'
-import { MockService } from '@/services/mock'
-import type { Settings } from '@/types'
-
-const mockService = new MockService()
+import { GetSettings, UpdateSettings } from '../../wailsjs/go/main/App'
+import { types } from '../../wailsjs/go/models'
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings | null>(null)
+  const [settings, setSettings] = useState<types.Settings | null>({
+    workspace: '~/Downloads/TransCube',
+    sourceLang: 'en',
+    apiProvider: 'gemini',
+    apiKey: '',
+    summaryLength: 'medium',
+    temperature: 0.3,
+    maxTokens: 4096
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -30,7 +36,7 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const data = await mockService.getSettings()
+      const data = await GetSettings()
       setSettings(data)
     } catch (err) {
       setError('Failed to load settings')
@@ -46,7 +52,7 @@ export default function SettingsPage() {
     setError('')
     
     try {
-      await mockService.updateSettings(settings)
+      await UpdateSettings(settings)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -62,7 +68,7 @@ export default function SettingsPage() {
     input.webkitdirectory = true
     input.onchange = (e: any) => {
       const path = e.target.files[0]?.path || '~/Downloads/TransCube'
-      setSettings(prev => prev ? { ...prev, workspace: path } : null)
+      setSettings((prev: types.Settings | null) => prev ? { ...prev, workspace: path } : null)
     }
     input.click()
   }
@@ -193,7 +199,7 @@ export default function SettingsPage() {
             <label className="text-sm font-medium">Model Provider</label>
             <select
               value={settings.apiProvider}
-              onChange={(e) => setSettings({ ...settings, apiProvider: e.target.value as 'gemini' | 'openai' })}
+              onChange={(e) => setSettings({ ...settings, apiProvider: e.target.value })}
               className="w-full px-3 py-2 rounded-md border"
             >
               <option value="gemini">Google Gemini 2.5 Flash</option>
@@ -265,7 +271,7 @@ export default function SettingsPage() {
             <label className="text-sm font-medium">Default Summary Length</label>
             <select
               value={settings.summaryLength}
-              onChange={(e) => setSettings({ ...settings, summaryLength: e.target.value as 'short' | 'medium' | 'long' })}
+              onChange={(e) => setSettings({ ...settings, summaryLength: e.target.value })}
               className="w-full px-3 py-2 rounded-md border"
             >
               <option value="short">Short (3-5 key points)</option>

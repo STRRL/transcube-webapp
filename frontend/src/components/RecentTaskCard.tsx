@@ -2,7 +2,18 @@ import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, Loader2, AlertCircle, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { RecentTask } from '@/services/mockData'
+// Define RecentTask type locally since mockData is removed
+interface RecentTask {
+  id: string
+  videoId: string
+  title: string
+  channel: string
+  thumbnail: string
+  status: 'completed' | 'processing' | 'failed'
+  progress: number
+  completedAt?: string
+  duration: string
+}
 
 interface RecentTaskCardProps {
   task: RecentTask
@@ -29,7 +40,7 @@ export default function RecentTaskCard({ task }: RecentTaskCardProps) {
       failed: 'destructive' as const
     }
     return (
-      <Badge variant={variants[task.status]} className="text-xs">
+      <Badge variant={variants[task.status as keyof typeof variants]} className="text-xs">
         {task.status}
       </Badge>
     )
