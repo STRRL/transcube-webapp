@@ -8,8 +8,6 @@ import {
   ChevronLeft,
   Clock,
   FileText,
-  Languages,
-  Brain,
   Copy,
   Check
 } from 'lucide-react'
@@ -18,11 +16,14 @@ import VideoPlayer, { VideoPlayerHandle } from '@/components/VideoPlayer'
 import { GetAllTasks, GetTaskSubtitles } from '../../wailsjs/go/main/App'
 import { types, main } from '../../wailsjs/go/models'
 
-// Empty summary data
-const mockSummary = {
-  overview: "",
-  keyPoints: [],
-  technicalDetails: []
+type StructuredSummary = {
+  type: 'structured'
+  content: {
+    keyPoints: string[]
+    mainTopic: string
+    conclusion: string
+    tags: string[]
+  }
 }
 
 export default function TaskPage() {
@@ -34,6 +35,7 @@ export default function TaskPage() {
   const [videoSrc, setVideoSrc] = useState<string | null>(null)
   const [subtitles, setSubtitles] = useState<any[]>([])
   const [transcriptSubtitles, setTranscriptSubtitles] = useState<main.SubtitleEntry[]>([])
+  const [summary, setSummary] = useState<StructuredSummary | null>(null)
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
 
   useEffect(() => {
@@ -52,9 +54,34 @@ export default function TaskPage() {
         // Load video file if task is completed
         if (task.status === 'done') {
           try {
-            // Use the media server endpoint
-            setVideoSrc(`/media/${task.id}/video.mp4`)
-            
+            // Detect available video container (mp4 preferred, fallback to webm)
+            const mp4 = `/media/${task.id}/video.mp4`
+            const webm = `/media/${task.id}/video.webm`
+            let chosen: string | null = null
+
+            try {
+              const headMp4 = await fetch(mp4, { method: 'HEAD' })
+              if (headMp4.ok) {
+                chosen = mp4
+              }
+            } catch {}
+
+            if (!chosen) {
+              try {
+                const headWebm = await fetch(webm, { method: 'HEAD' })
+                if (headWebm.ok) {
+                  chosen = webm
+                }
+              } catch {}
+            }
+
+            if (chosen) {
+              setVideoSrc(chosen)
+            } else {
+              // As a last resort, try mp4 to let the video element surface an error
+              setVideoSrc(mp4)
+            }
+
             // Load subtitles via media server based on source language
             const subtitleFiles = []
             
@@ -97,6 +124,17 @@ export default function TaskPage() {
             setTranscriptSubtitles(subs)
           } catch (err) {
             console.error('Failed to load transcript:', err)
+          }
+
+          // Load summary JSON from media server if available
+          try {
+            const res = await fetch(`/media/${task.id}/summary_structured.json`)
+            if (res.ok) {
+              const json = await res.json()
+              setSummary(json)
+            }
+          } catch (err) {
+            console.error('Failed to load summary:', err)
           }
         }
       }
@@ -155,6 +193,8 @@ export default function TaskPage() {
       }
     }
   }
+
+  
 
   return (
     <div className="h-full flex flex-col">
@@ -251,7 +291,6 @@ export default function TaskPage() {
               <TabsTrigger value="about">About</TabsTrigger>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="transcript">Transcript</TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
 
             <TabsContent value="about" className="space-y-4">
@@ -290,22 +329,35 @@ export default function TaskPage() {
 
             <TabsContent value="summary" className="space-y-4">
               <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Overview</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {mockSummary.overview || 'Summary not available yet. AI summarization will be added in future updates.'}
-                  </p>
-                </div>
-                
-                {mockSummary.keyPoints.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Key Points</h3>
-                    <ul className="list-disc list-inside space-y-1">
-                      {mockSummary.keyPoints.map((point, index) => (
-                        <li key={index} className="text-sm">{point}</li>
-                      ))}
-                    </ul>
-                  </div>
+                {video.status === 'done' ? (
+                  summary ? (
+                    <>
+                      <div>
+                        <h3 className="text-lg font-semibold mb-1">Main Topic</h3>
+                        <p className="text-sm text-muted-foreground">{summary.content.mainTopic}</p>
+                      </div>
+                      {summary.content.keyPoints && summary.content.keyPoints.length > 0 && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2">Key Points</h3>
+                          <ul className="list-disc list-inside space-y-1">
+                            {summary.content.keyPoints.map((pt, i) => (
+                              <li key={i} className="text-sm">{pt}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {summary.content.conclusion && (
+                        <div>
+                          <h3 className="text-lg font-semibold mb-1">Conclusion</h3>
+                          <p className="text-sm text-muted-foreground">{summary.content.conclusion}</p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Loading summary...</div>
+                  )
+                ) : (
+                  <div className="text-sm text-muted-foreground">Summary will be available after processing completes.</div>
                 )}
               </div>
             </TabsContent>
@@ -319,24 +371,16 @@ export default function TaskPage() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Transcript not available yet</p>
-                  <p className="text-sm mt-2">
+                  <p>
                     {video.status === 'done' 
-                      ? 'Check the work directory for subtitle files'
+                      ? 'No transcript available (no speech detected or subtitles empty)'
                       : 'Transcript will be available after processing completes'}
                   </p>
                 </div>
               )}
             </TabsContent>
 
-            <TabsContent value="details" className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Processing Details</h3>
-                <pre className="bg-muted p-4 rounded-lg text-xs overflow-auto">
-                  {JSON.stringify(video, null, 2)}
-                </pre>
-              </div>
-            </TabsContent>
+            
           </Tabs>
         </div>
       </div>

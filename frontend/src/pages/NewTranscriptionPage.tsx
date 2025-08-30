@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle, ChevronLeft, Download, CheckCircle2, XCircle } from 'lucide-react'
+import { AlertCircle, ChevronLeft, Download } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
 import { CheckDependencies, StartTranscription, GetCurrentTask } from '../../wailsjs/go/main/App'
@@ -141,7 +142,7 @@ export default function NewTranscriptionPage() {
         <CardHeader>
           <CardTitle>Video Details</CardTitle>
           <CardDescription>
-            Enter the YouTube URL and select processing options
+            Enter the YouTube URL to start processing
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -167,39 +168,23 @@ export default function NewTranscriptionPage() {
             
             <div className="space-y-2">
               <label className="text-sm font-medium">Source Language</label>
-              <select
-                value={sourceLang}
-                onChange={(e) => setSourceLang(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md"
-                disabled={isProcessing}
-              >
-                <option value="en">English</option>
-                <option value="zh">Chinese</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-              </select>
+              <Select value={sourceLang} onValueChange={setSourceLang} disabled={isProcessing}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="zh">Chinese</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                  <SelectItem value="de">German</SelectItem>
+                  <SelectItem value="ja">Japanese</SelectItem>
+                  <SelectItem value="ko">Korean</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Processing Options</label>
-              <div className="space-y-2">
-                <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked disabled={isProcessing} />
-                  <span className="text-sm">Generate transcript</span>
-                </label>
-                <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked disabled={isProcessing} />
-                  <span className="text-sm">Translate to Chinese (if source is English)</span>
-                </label>
-                <label className="flex items-center space-x-2">
-                  <input type="checkbox" defaultChecked disabled={isProcessing} />
-                  <span className="text-sm">Generate AI summary</span>
-                </label>
-              </div>
-            </div>
+            
             
             {error && (
               <div className="flex items-center space-x-2 text-sm text-destructive">
@@ -235,60 +220,7 @@ export default function NewTranscriptionPage() {
         />
       )}
 
-      {/* System Status */}
-      {!isProcessing && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">System Dependencies</CardTitle>
-            <CardDescription>
-              Required tools for processing
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">yt-dlp (Video downloader)</span>
-                <div className="flex items-center space-x-1">
-                  {dependencies.ytdlp ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {dependencies.ytdlp ? 'Installed' : 'Missing'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">ffmpeg (Media converter)</span>
-                <div className="flex items-center space-x-1">
-                  {dependencies.ffmpeg ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {dependencies.ffmpeg ? 'Installed' : 'Missing'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">yap (Speech recognition)</span>
-                <div className="flex items-center space-x-1">
-                  {dependencies.yap ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {dependencies.yap ? 'Installed' : 'Missing'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      
     </div>
   )
 }

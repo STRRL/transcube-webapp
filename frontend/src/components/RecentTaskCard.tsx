@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, Loader2, AlertCircle, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-// Define RecentTask type locally since mockData is removed
 interface RecentTask {
   id: string
   videoId: string
@@ -27,7 +26,7 @@ export default function RecentTaskCard({ task }: RecentTaskCardProps) {
       case 'completed':
         return <CheckCircle2 className="w-4 h-4 text-green-500" />
       case 'processing':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+        return <Loader2 className="w-4 h-4 text-primary animate-spin" />
       case 'failed':
         return <AlertCircle className="w-4 h-4 text-red-500" />
     }
@@ -67,7 +66,7 @@ export default function RecentTaskCard({ task }: RecentTaskCardProps) {
     <div 
       className={cn(
         "flex items-center space-x-3 p-3 rounded-lg hover:bg-secondary/50 cursor-pointer transition-colors",
-        task.status === 'processing' && "bg-blue-50/50 dark:bg-blue-950/20"
+        task.status === 'processing' && "bg-secondary/50"
       )}
       onClick={() => navigate(`/task/${task.id}`)}
     >
@@ -114,7 +113,7 @@ export default function RecentTaskCard({ task }: RecentTaskCardProps) {
           <div className="mt-2">
             <div className="w-full bg-secondary rounded-full h-1.5">
               <div 
-                className="bg-blue-600 h-1.5 rounded-full transition-all"
+                className="bg-primary h-1.5 rounded-full transition-all"
                 style={{ width: `${task.progress}%` }}
               />
             </div>

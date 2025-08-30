@@ -67,37 +67,49 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 		return err
 	}
 	
-	outputPath := filepath.Join(outputDir, "video.mp4")
-	
-	// Build yt-dlp command - prefer H.264 but don't force re-encoding
-	// Format selection priority:
-	// 1. H.264 video + AAC audio (best compatibility)
-	// 2. H.264 video + any audio
-	// 3. Any format up to 1080p (will be AV1/VP9 on newer videos)
-	cmd := exec.Command("yt-dlp",
-		"-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/bestvideo[height<=1080][vcodec^=h264]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-		"--merge-output-format", "mp4",
-		"--continue",
-		"--no-playlist",
-		"-o", outputPath,
-		url,
-	)
-	
-	// Execute command
-	slog.Debug("Running yt-dlp video download command")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		slog.Error("Video download failed", "error", err, "output", string(output))
-		// Log the error
-		d.storage.SaveLog(outputDir, "download", string(output))
-		return d.parseError(err)
-	}
-	
-	slog.Info("Video downloaded successfully", "outputDir", outputDir)
-	// Log success
-	d.storage.SaveLog(outputDir, "download", "Video downloaded successfully")
-	
-	return nil
+    // First attempt: MP4 (best compatibility)
+    mp4Path := filepath.Join(outputDir, "video.mp4")
+    cmdMp4 := exec.Command("yt-dlp",
+        "-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/bestvideo[height<=1080][vcodec^=h264]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        "--merge-output-format", "mp4",
+        "--continue",
+        "--no-playlist",
+        "-o", mp4Path,
+        url,
+    )
+
+    slog.Debug("Running yt-dlp (mp4) download command")
+    output, err := cmdMp4.CombinedOutput()
+    if err == nil {
+        slog.Info("Video downloaded successfully (mp4)", "outputDir", outputDir)
+        d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)")
+        return nil
+    }
+
+    // Fallback: WebM (more permissive for VP9/Opus)
+    slog.Warn("MP4 download failed; attempting WebM fallback", "error", err)
+    d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
+
+    webmPath := filepath.Join(outputDir, "video.webm")
+    cmdWebm := exec.Command("yt-dlp",
+        "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        "--merge-output-format", "webm",
+        "--continue",
+        "--no-playlist",
+        "-o", webmPath,
+        url,
+    )
+    slog.Debug("Running yt-dlp (webm) download command")
+    output2, err2 := cmdWebm.CombinedOutput()
+    if err2 != nil {
+        slog.Error("Video download failed (webm fallback)", "error", err2, "output", string(output2))
+        d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2))
+        return d.parseError(err2)
+    }
+
+    slog.Info("Video downloaded successfully (webm)", "outputDir", outputDir)
+    d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)")
+    return nil
 }
 
 

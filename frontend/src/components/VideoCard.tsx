@@ -57,13 +57,13 @@ export default function VideoCard({
           {duration}
         </div>
         {category && (
-          <div className="absolute top-2 left-2 bg-blue-600/90 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute top-2 left-2 bg-primary/90 text-primary-foreground text-xs px-2 py-1 rounded">
             {category}
           </div>
         )}
       </div>
       <div className="mt-3">
-        <h3 className="font-medium text-sm line-clamp-2 group-hover:text-blue-600 transition-colors">
+        <h3 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
           {title}
         </h3>
         <p className="text-xs text-muted-foreground mt-1">{channel}</p>

@@ -41,37 +41,37 @@ const stageConfig: Record<TaskStage, {
   pending: {
     label: 'Pending',
     icon: Clock,
-    color: 'text-gray-500'
+    color: 'text-muted-foreground'
   },
   downloading: {
     label: 'Downloading',
     icon: Download,
-    color: 'text-blue-500'
+    color: 'text-muted-foreground'
   },
   transcribing: {
     label: 'Transcribing',
     icon: FileText,
-    color: 'text-purple-500'
+    color: 'text-muted-foreground'
   },
   translating: {
     label: 'Translating',
     icon: Languages,
-    color: 'text-indigo-500'
+    color: 'text-muted-foreground'
   },
   summarizing: {
     label: 'Summarizing',
     icon: Brain,
-    color: 'text-teal-500'
+    color: 'text-muted-foreground'
   },
   done: {
     label: 'Completed',
     icon: CheckCircle2,
-    color: 'text-green-500'
+    color: 'text-foreground'
   },
   failed: {
     label: 'Failed',
     icon: XCircle,
-    color: 'text-red-500'
+    color: 'text-destructive'
   }
 }
 
@@ -114,9 +114,9 @@ export default function TaskProgress({
                 <div className="flex flex-col items-center">
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                    isCompleted ? "bg-green-500 text-white" :
+                    isCompleted ? "bg-primary text-primary-foreground" :
                     isActive && !isFailed ? "bg-primary text-primary-foreground" :
-                    isFailed ? "bg-red-500 text-white" :
+                    isFailed ? "bg-destructive text-destructive-foreground" :
                     "bg-muted text-muted-foreground"
                   )}>
                     {isCompleted ? (
@@ -132,7 +132,7 @@ export default function TaskProgress({
                 {index < stages.length - 1 && (
                   <div className={cn(
                     "w-full h-1 mx-2",
-                    index < currentStageIndex ? "bg-green-500" : "bg-muted"
+                    index < currentStageIndex ? "bg-primary" : "bg-muted"
                   )} />
                 )}
               </div>
@@ -183,7 +183,7 @@ export default function TaskProgress({
 
         {/* Success State */}
         {stage === 'done' && (
-          <div className="p-3 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-md">
+          <div className="p-3 bg-muted text-foreground rounded-md">
             <div className="flex items-center space-x-2">
               <CheckCircle2 className="h-4 w-4" />
               <span className="text-sm font-medium">Processing completed successfully!</span>

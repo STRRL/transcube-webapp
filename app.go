@@ -1,29 +1,32 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-	"os"
-	"strings"
-	"time"
-	"transcube-webapp/internal/services"
-	"transcube-webapp/internal/types"
+    "context"
+    "fmt"
+    "log/slog"
+    "os"
+    "strings"
+    "time"
+    "transcube-webapp/internal/services"
+    "transcube-webapp/internal/types"
 	
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx           context.Context
-	depChecker    *services.DependencyChecker
-	storage       *services.Storage
-	taskManager   *services.TaskManager
-	downloader    *services.Downloader
-	yapRunner     *services.YapRunner
-	mediaServer   *services.MediaServer
-	logger        *slog.Logger
-	currentTaskID string
+    ctx           context.Context
+    depChecker    *services.DependencyChecker
+    storage       *services.Storage
+    taskManager   *services.TaskManager
+    downloader    *services.Downloader
+    yapRunner     *services.YapRunner
+    mediaServer   *services.MediaServer
+    logger        *slog.Logger
+    currentTaskID string
+    summarizer    *services.OpenRouterClient
+    settings      types.Settings
+    settingsStore *services.SettingsStore
 }
 
 // NewApp creates a new App application struct
@@ -35,29 +38,57 @@ func NewApp() *App {
 	slog.SetDefault(logger)
 	
 	storage := services.NewStorage("")
-	return &App{
-		depChecker:  services.NewDependencyChecker(),
-		storage:     storage,
-		taskManager: services.NewTaskManager(storage),
-		downloader:  services.NewDownloader(storage),
-		yapRunner:   services.NewYapRunner(storage),
-		mediaServer: services.NewMediaServer(storage),
-		logger:      logger,
-	}
+    ss, _ := services.NewSettingsStore()
+    return &App{
+        depChecker:  services.NewDependencyChecker(),
+        storage:     storage,
+        taskManager: services.NewTaskManager(storage),
+        downloader:  services.NewDownloader(storage),
+        yapRunner:   services.NewYapRunner(storage),
+        mediaServer: services.NewMediaServer(storage),
+        logger:      logger,
+        summarizer:  services.NewOpenRouterClient(),
+        settings: types.Settings{
+            Workspace:     storage.GetWorkspace(),
+            SourceLang:    "en",
+            APIProvider:   "openrouter",
+            APIKey:        "",
+            SummaryLength: "medium",
+            Temperature:   0.3,
+            MaxTokens:     4096,
+        },
+        settingsStore: ss,
+    }
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-	a.logger.Info("TransCube starting up")
-	
-	// Ensure workspace exists
-	if err := a.storage.EnsureWorkspace(); err != nil {
-		a.logger.Error("Failed to ensure workspace", "error", err)
-	} else {
-		a.logger.Info("Workspace ready", "path", a.storage.GetWorkspace())
-	}
+    a.ctx = ctx
+    a.logger.Info("TransCube starting up")
+
+    // Ensure workspace exists
+    if err := a.storage.EnsureWorkspace(); err != nil {
+        a.logger.Error("Failed to ensure workspace", "error", err)
+    } else {
+        a.logger.Info("Workspace ready", "path", a.storage.GetWorkspace())
+    }
+
+    // Load persisted settings (if present)
+    if a.settingsStore != nil {
+        if loaded, err := a.settingsStore.Load(); err != nil {
+            a.logger.Warn("Failed to load settings", "error", err)
+        } else if loaded != nil {
+            a.settings = *loaded
+            // keep storage workspace in sync
+            if a.settings.Workspace != "" {
+                a.storage.SetWorkspace(a.settings.Workspace)
+                if err := a.storage.EnsureWorkspace(); err != nil {
+                    a.logger.Warn("Failed to ensure workspace from settings", "error", err)
+                }
+            }
+        }
+    }
 	
 	// Log dependency status
 	deps := a.depChecker.Check()
@@ -74,24 +105,28 @@ func (a *App) CheckDependencies() types.DependencyStatus {
 
 // GetSettings returns current application settings
 func (a *App) GetSettings() types.Settings {
-	return types.Settings{
-		Workspace:     a.storage.GetWorkspace(),
-		SourceLang:    "en",
-		APIProvider:   "gemini",
-		APIKey:        "",
-		SummaryLength: "medium",
-		Temperature:   0.3,
-		MaxTokens:     4096,
-	}
+    // keep workspace in sync
+    a.settings.Workspace = a.storage.GetWorkspace()
+    return a.settings
 }
 
 // UpdateSettings updates application settings
 func (a *App) UpdateSettings(settings types.Settings) types.Settings {
-	if settings.Workspace != "" {
-		a.storage.SetWorkspace(settings.Workspace)
-		a.storage.EnsureWorkspace()
-	}
-	return settings
+    if settings.Workspace != "" {
+        a.storage.SetWorkspace(settings.Workspace)
+        a.storage.EnsureWorkspace()
+    }
+    // store in memory (could be persisted later)
+    a.settings = settings
+    // ensure workspace reflects current storage
+    a.settings.Workspace = a.storage.GetWorkspace()
+    // persist to disk
+    if a.settingsStore != nil {
+        if err := a.settingsStore.Save(a.settings); err != nil {
+            a.logger.Warn("Failed to persist settings", "error", err)
+        }
+    }
+    return a.settings
 }
 
 // ParseVideoUrl parses a YouTube URL and returns video metadata
@@ -199,19 +234,28 @@ func (a *App) GetTaskSubtitles(taskID string) ([]SubtitleEntry, error) {
 		return nil, fmt.Errorf("task not found")
 	}
 	
-	// Read subtitle file
-	subtitlePath := fmt.Sprintf("%s/subs_%s.srt", task.WorkDir, task.SourceLang)
-	content, err := os.ReadFile(subtitlePath)
-	if err != nil {
-		a.logger.Error("Failed to read subtitle file", "path", subtitlePath, "error", err)
-		return nil, err
-	}
-	
-	// Parse SRT format
-	entries := parseSRT(string(content))
+    // Read subtitle file (gracefully handle missing/empty files)
+    subtitlePath := fmt.Sprintf("%s/subs_%s.srt", task.WorkDir, task.SourceLang)
+    content, err := os.ReadFile(subtitlePath)
+    if err != nil {
+        a.logger.Warn("Subtitle file not available; returning empty transcript", "path", subtitlePath, "error", err)
+        return []SubtitleEntry{}, nil
+    }
+
+    // Empty file: no speech detected or no transcript
+    if len(strings.TrimSpace(string(content))) == 0 {
+        a.logger.Info("Subtitle file is empty; likely no speech", "taskId", taskID)
+        return []SubtitleEntry{}, nil
+    }
+
+    // Parse SRT format
+    entries := parseSRT(string(content))
 	a.logger.Info("Parsed subtitles", "taskId", taskID, "entries", len(entries))
 	return entries, nil
 }
+
+// GetTaskSubtitlesForLang returns parsed subtitles for a task for the specified language code
+// GetTaskSubtitlesForLang and RegenerateTranscript were removed to keep a single-language flow.
 
 // parseSRT parses SRT subtitle format
 func parseSRT(content string) []SubtitleEntry {
@@ -361,9 +405,21 @@ func (a *App) processTask(task *types.Task) {
 	}
 	a.logger.Info("Video downloaded successfully", "taskId", task.ID)
 	
-	// Extract audio for transcription
-	videoPath := fmt.Sprintf("%s/video.mp4", workDir)
-	audioPath := fmt.Sprintf("%s/audio.aac", workDir)
+    // Extract audio for transcription
+    // Choose existing video file (prefer mp4, fallback to webm)
+    videoPath := fmt.Sprintf("%s/video.mp4", workDir)
+    if _, statErr := os.Stat(videoPath); os.IsNotExist(statErr) {
+        alt := fmt.Sprintf("%s/video.webm", workDir)
+        if _, statErr2 := os.Stat(alt); statErr2 == nil {
+            videoPath = alt
+        }
+    }
+    audioPath := fmt.Sprintf("%s/audio.aac", workDir)
+    if _, statErr := os.Stat(videoPath); os.IsNotExist(statErr) {
+        a.logger.Error("No downloaded video found for audio extraction", "taskId", task.ID)
+        a.taskManager.SetTaskError("video file missing after download")
+        return
+    }
 	a.logger.Info("Extracting audio from video", "taskId", task.ID)
 	err = a.downloader.ExtractAudio(videoPath, audioPath)
 	if err != nil {
@@ -384,9 +440,45 @@ func (a *App) processTask(task *types.Task) {
 	}
 	a.logger.Info("Transcription complete", "taskId", task.ID)
 	
-	// For now, mark as done (translation and summary will be added later)
-	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
-	a.logger.Info("Task completed successfully", "taskId", task.ID)
+    // Summarizing stage via OpenRouter if configured
+    a.taskManager.UpdateTaskStatus(types.TaskStatusSummarizing, 85)
+    a.logger.Info("Starting summarization", "taskId", task.ID, "provider", a.settings.APIProvider)
+
+    // Load transcript text (use the SRT file we generated)
+    srtPath := fmt.Sprintf("%s/subs_%s.srt", workDir, task.SourceLang)
+    srtBytes, err := os.ReadFile(srtPath)
+    if err != nil {
+        a.logger.Error("Failed to read transcript for summary", "taskId", task.ID, "error", err)
+        a.taskManager.SetTaskError(fmt.Sprintf("Failed to read transcript for summary: %v", err))
+        return
+    }
+
+    // Only implement OpenRouter path for now (requested)
+    // For now, always try OpenRouter summarization as requested.
+    sumBytes, err := a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.Temperature, a.settings.MaxTokens)
+    summaryPath := fmt.Sprintf("%s/summary_structured.json", workDir)
+    if err != nil {
+        // Log but do not fail the entire task; save a minimal placeholder
+        a.logger.Error("Summarization failed", "taskId", task.ID, "error", err)
+        _ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Summary generation failed: %v", err))
+        // Save placeholder to avoid 404s in UI
+        placeholder := []byte(`{"type":"structured","content":{"keyPoints":[],"mainTopic":"","conclusion":"","tags":[]}}`)
+        if werr := os.WriteFile(summaryPath, placeholder, 0644); werr != nil {
+            a.logger.Error("Failed to write placeholder summary", "taskId", task.ID, "error", werr)
+        }
+    } else {
+        if werr := os.WriteFile(summaryPath, sumBytes, 0644); werr != nil {
+            a.logger.Error("Failed to write summary", "taskId", task.ID, "error", werr)
+            _ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Failed to write summary: %v", werr))
+        } else {
+            _ = a.storage.SaveLog(workDir, "summarize", "Summary generated via OpenRouter")
+            a.logger.Info("Summarization complete", "taskId", task.ID, "path", summaryPath)
+        }
+    }
+
+    // Mark as done
+    a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
+    a.logger.Info("Task completed successfully", "taskId", task.ID)
 	
 	// Clear current task ID
 	if a.currentTaskID == task.ID {

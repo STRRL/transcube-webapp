@@ -85,11 +85,11 @@ type DependencyStatus struct {
 
 // Settings represents user configuration
 type Settings struct {
-	Workspace      string `json:"workspace"`
-	SourceLang     string `json:"sourceLang"`
-	APIProvider    string `json:"apiProvider"` // "gemini" or "openai"
-	APIKey         string `json:"apiKey"`
-	SummaryLength  string `json:"summaryLength"` // "short", "medium", "long"
-	Temperature    float64 `json:"temperature"`
-	MaxTokens      int    `json:"maxTokens"`
+    Workspace      string `json:"workspace"`
+    SourceLang     string `json:"sourceLang"`
+    APIProvider    string `json:"apiProvider"` // "gemini", "openai", "openrouter"
+    APIKey         string `json:"apiKey"`
+    SummaryLength  string `json:"summaryLength"` // "short", "medium", "long"
+    Temperature    float64 `json:"temperature"`
+    MaxTokens      int    `json:"maxTokens"`
 }
