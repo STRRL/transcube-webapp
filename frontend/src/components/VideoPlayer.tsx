@@ -1,4 +1,6 @@
-import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { Button } from '@/components/ui/button'
+import { Maximize2, Minimize2 } from 'lucide-react'
 
 interface VideoPlayerProps {
   src: string
@@ -13,11 +15,15 @@ interface VideoPlayerProps {
 
 export interface VideoPlayerHandle {
   seekTo: (timeInSeconds: number) => void
+  enterFullscreen: () => void
+  exitFullscreen: () => void
+  toggleFullscreen: () => void
 }
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, poster, subtitles = [] }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   
   useImperativeHandle(ref, () => ({
     seekTo: (timeInSeconds: number) => {
@@ -27,7 +33,76 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
           videoRef.current.play()
         }
       }
-    }
+    },
+    enterFullscreen: () => {
+      // Try container fullscreen (standard approach)
+      if (containerRef.current) {
+        const container = containerRef.current as any
+        if (container.requestFullscreen) {
+          container.requestFullscreen().catch(() => {})
+          setIsFullscreen(true)
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen()
+          setIsFullscreen(true)
+        } else if (container.mozRequestFullScreen) {
+          container.mozRequestFullScreen()
+          setIsFullscreen(true)
+        } else if (container.msRequestFullscreen) {
+          container.msRequestFullscreen()
+          setIsFullscreen(true)
+        }
+      }
+    },
+    exitFullscreen: () => {
+      // Try standard document exit fullscreen
+      if (document.fullscreenElement) {
+        const doc = document as any
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {})
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen()
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen()
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen()
+        }
+        setIsFullscreen(false)
+      }
+    },
+    toggleFullscreen: () => {
+      if (document.fullscreenElement) {
+        // Exit fullscreen
+        const doc = document as any
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {})
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen()
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen()
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen()
+        }
+        setIsFullscreen(false)
+      } else {
+        // Enter fullscreen
+        if (containerRef.current) {
+          const container = containerRef.current as any
+          if (container.requestFullscreen) {
+            container.requestFullscreen().catch(() => {})
+            setIsFullscreen(true)
+          } else if (container.webkitRequestFullscreen) {
+            container.webkitRequestFullscreen()
+            setIsFullscreen(true)
+          } else if (container.mozRequestFullScreen) {
+            container.mozRequestFullScreen()
+            setIsFullscreen(true)
+          } else if (container.msRequestFullscreen) {
+            container.msRequestFullscreen()
+            setIsFullscreen(true)
+          }
+        }
+      }
+    },
   }))
 
   useEffect(() => {
@@ -60,6 +135,22 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
     }
   }, [subtitles])
 
+  useEffect(() => {
+    const video = videoRef.current as any
+    const onStdFs = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onStdFs)
+    // Safari/WebKit media fullscreen events
+    const onWebkitBegin = () => setIsFullscreen(true)
+    const onWebkitEnd = () => setIsFullscreen(false)
+    video?.addEventListener?.('webkitbeginfullscreen', onWebkitBegin)
+    video?.addEventListener?.('webkitendfullscreen', onWebkitEnd)
+    return () => {
+      document.removeEventListener('fullscreenchange', onStdFs)
+      video?.removeEventListener?.('webkitbeginfullscreen', onWebkitBegin)
+      video?.removeEventListener?.('webkitendfullscreen', onWebkitEnd)
+    }
+  }, [])
+
   return (
     <div className="relative w-full h-full bg-black" ref={containerRef}>
       <video
@@ -69,8 +160,42 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
         poster={poster}
         crossOrigin="anonymous"
         playsInline
+        onDoubleClick={() => {
+          if (document.fullscreenElement) {
+            // Exit fullscreen
+            const doc = document as any
+            if (doc.exitFullscreen) {
+              doc.exitFullscreen().catch(() => {})
+            } else if (doc.webkitExitFullscreen) {
+              doc.webkitExitFullscreen()
+            } else if (doc.mozCancelFullScreen) {
+              doc.mozCancelFullScreen()
+            } else if (doc.msExitFullscreen) {
+              doc.msExitFullscreen()
+            }
+            setIsFullscreen(false)
+          } else {
+            // Enter fullscreen
+            if (containerRef.current) {
+              const container = containerRef.current as any
+              if (container.requestFullscreen) {
+                container.requestFullscreen().catch(() => {})
+                setIsFullscreen(true)
+              } else if (container.webkitRequestFullscreen) {
+                container.webkitRequestFullscreen()
+                setIsFullscreen(true)
+              } else if (container.mozRequestFullScreen) {
+                container.mozRequestFullScreen()
+                setIsFullscreen(true)
+              } else if (container.msRequestFullscreen) {
+                container.msRequestFullscreen()
+                setIsFullscreen(true)
+              }
+            }
+          }
+        }}
       >
-        <source src={src} type="video/mp4" />
+        <source src={src} type={src.endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
         {subtitles.map((sub, index) => (
           <track
             key={index}
@@ -82,6 +207,51 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
           />
         ))}
       </video>
+      <div className="absolute bottom-3 right-3">
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="rounded-full opacity-80 hover:opacity-100"
+          onClick={() => {
+            if (document.fullscreenElement) {
+              // Exit fullscreen
+              const doc = document as any
+              if (doc.exitFullscreen) {
+                doc.exitFullscreen().catch(() => {})
+              } else if (doc.webkitExitFullscreen) {
+                doc.webkitExitFullscreen()
+              } else if (doc.mozCancelFullScreen) {
+                doc.mozCancelFullScreen()
+              } else if (doc.msExitFullscreen) {
+                doc.msExitFullscreen()
+              }
+              setIsFullscreen(false)
+            } else {
+              // Enter fullscreen
+              if (containerRef.current) {
+                const container = containerRef.current as any
+                if (container.requestFullscreen) {
+                  container.requestFullscreen().catch(() => {})
+                  setIsFullscreen(true)
+                } else if (container.webkitRequestFullscreen) {
+                  container.webkitRequestFullscreen()
+                  setIsFullscreen(true)
+                } else if (container.mozRequestFullScreen) {
+                  container.mozRequestFullScreen()
+                  setIsFullscreen(true)
+                } else if (container.msRequestFullscreen) {
+                  container.msRequestFullscreen()
+                  setIsFullscreen(true)
+                }
+              }
+            }
+          }}
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        >
+          {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+        </Button>
+      </div>
     </div>
   )
 })
