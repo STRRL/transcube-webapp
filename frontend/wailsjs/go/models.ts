@@ -49,6 +49,7 @@ export namespace types {
 	    apiProvider: string;
 	    apiKey: string;
 	    summaryLength: string;
+	    summaryLanguage: string;
 	    temperature: number;
 	    maxTokens: number;
 	
@@ -63,6 +64,7 @@ export namespace types {
 	        this.apiProvider = source["apiProvider"];
 	        this.apiKey = source["apiKey"];
 	        this.summaryLength = source["summaryLength"];
+	        this.summaryLanguage = source["summaryLanguage"];
 	        this.temperature = source["temperature"];
 	        this.maxTokens = source["maxTokens"];
 	    }

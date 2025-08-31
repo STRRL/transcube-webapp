@@ -21,6 +21,7 @@ export default function SettingsPage() {
     apiProvider: 'gemini',
     apiKey: '',
     summaryLength: 'medium',
+    summaryLanguage: 'en',
     temperature: 0.3,
     maxTokens: 4096
   })
@@ -184,6 +185,33 @@ export default function SettingsPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               Your API key is stored securely and never transmitted except to the AI provider
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Summary Language</label>
+            <Select
+              value={settings.summaryLanguage || 'en'}
+              onValueChange={(v) => setSettings({ ...settings, summaryLanguage: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="zh">Chinese (中文)</SelectItem>
+                <SelectItem value="ja">Japanese (日本語)</SelectItem>
+                <SelectItem value="ko">Korean (한국어)</SelectItem>
+                <SelectItem value="es">Spanish (Español)</SelectItem>
+                <SelectItem value="fr">French (Français)</SelectItem>
+                <SelectItem value="de">German (Deutsch)</SelectItem>
+                <SelectItem value="ru">Russian (Русский)</SelectItem>
+                <SelectItem value="pt">Portuguese (Português)</SelectItem>
+                <SelectItem value="it">Italian (Italiano)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Language for generated summaries
             </p>
           </div>
 

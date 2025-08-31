@@ -90,6 +90,7 @@ type Settings struct {
     APIProvider    string `json:"apiProvider"` // "gemini", "openai", "openrouter"
     APIKey         string `json:"apiKey"`
     SummaryLength  string `json:"summaryLength"` // "short", "medium", "long"
+    SummaryLanguage string `json:"summaryLanguage"` // Language for summaries (e.g., "en", "zh", "ja")
     Temperature    float64 `json:"temperature"`
     MaxTokens      int    `json:"maxTokens"`
 }

@@ -46,7 +46,7 @@ type jsonSchema struct {
 }
 
 // SummarizeStructured calls OpenRouter with Gemini 2.5 Flash to produce a structured JSON summary
-func (c *OpenRouterClient) SummarizeStructured(ctx context.Context, apiKey string, transcript string, length string, temperature float64, maxTokens int) ([]byte, error) {
+func (c *OpenRouterClient) SummarizeStructured(ctx context.Context, apiKey string, transcript string, length string, language string, temperature float64, maxTokens int) ([]byte, error) {
     if apiKey == "" {
         apiKey = os.Getenv("OPENROUTER_API_KEY")
     }
@@ -64,10 +64,32 @@ func (c *OpenRouterClient) SummarizeStructured(ctx context.Context, apiKey strin
     if length == "" {
         length = "medium"
     }
+    if language == "" {
+        language = "en"
+    }
+
+    // Map language codes to full names
+    languageMap := map[string]string{
+        "en": "English",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+        "ru": "Russian",
+        "pt": "Portuguese",
+        "it": "Italian",
+    }
+    
+    langName := languageMap[language]
+    if langName == "" {
+        langName = "English"
+    }
 
     // Build system / user prompts (content requirements still help quality)
     system := "You are a precise assistant that summarizes transcripts."
-    user := fmt.Sprintf("Summarize the transcript. Length: %s. Use English. Return the object requested by the schema.")
+    user := fmt.Sprintf("Summarize the transcript. Length: %s. Use %s for all text in the summary. Return the object requested by the schema.", length, langName)
 
     // Define a strict JSON schema to enforce structured output
     schema := map[string]interface{}{

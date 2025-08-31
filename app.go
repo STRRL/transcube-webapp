@@ -54,6 +54,7 @@ func NewApp() *App {
             APIProvider:   "openrouter",
             APIKey:        "",
             SummaryLength: "medium",
+            SummaryLanguage: "en",
             Temperature:   0.3,
             MaxTokens:     4096,
         },
@@ -455,7 +456,7 @@ func (a *App) processTask(task *types.Task) {
 
     // Only implement OpenRouter path for now (requested)
     // For now, always try OpenRouter summarization as requested.
-    sumBytes, err := a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.Temperature, a.settings.MaxTokens)
+    sumBytes, err := a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.SummaryLanguage, a.settings.Temperature, a.settings.MaxTokens)
     summaryPath := fmt.Sprintf("%s/summary_structured.json", workDir)
     if err != nil {
         // Log but do not fail the entire task; save a minimal placeholder

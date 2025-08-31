@@ -56,6 +56,12 @@ export default function HomePage() {
       console.log('All tasks loaded:', tasks)
       // Filter only completed tasks - handle null case
       const completed = (tasks || []).filter(task => task.status === 'done')
+      // Sort by createdAt in descending order (newest first)
+      completed.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime()
+        const dateB = new Date(b.createdAt).getTime()
+        return dateB - dateA
+      })
       console.log('Completed tasks:', completed)
       setProcessedVideos(completed)
     } catch (err) {
