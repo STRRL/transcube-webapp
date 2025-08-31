@@ -160,6 +160,137 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
     },
   }))
 
+  // Add comprehensive keyboard shortcuts (YouTube-style)
+  useEffect(() => {
+    if (!videoRef.current) return
+    
+    const video = videoRef.current
+    
+    // Define shortcut handlers in a systematic way
+    const shortcuts: { [key: string]: (e: KeyboardEvent) => void } = {
+      // Play/Pause
+      'k': () => video.paused ? video.play() : video.pause(),
+      ' ': () => video.paused ? video.play() : video.pause(),
+      
+      // Seeking
+      'ArrowLeft': () => { video.currentTime = Math.max(0, video.currentTime - 5) },
+      'ArrowRight': () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 5) },
+      'j': () => { video.currentTime = Math.max(0, video.currentTime - 10) },
+      'l': () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10) },
+      
+      // Volume
+      'ArrowUp': () => { video.volume = Math.min(1, video.volume + 0.05) },
+      'ArrowDown': () => { video.volume = Math.max(0, video.volume - 0.05) },
+      'm': () => { video.muted = !video.muted },
+      
+      // Fullscreen
+      'f': () => toggleFullscreen(),
+      'Escape': () => {
+        const v = video as any
+        if (document.fullscreenElement === v ||
+            (document as any).webkitFullscreenElement === v ||
+            v?.webkitDisplayingFullscreen === true ||
+            v?.webkitPresentationMode === 'fullscreen') {
+          exitFullscreen()
+        }
+      },
+      
+      // Subtitles
+      'c': () => {
+        const tracks = video.textTracks
+        if (tracks && tracks.length > 0) {
+          const track = tracks[0]
+          track.mode = track.mode === 'showing' ? 'hidden' : 'showing'
+        }
+      },
+      
+      // Frame by frame (when paused)
+      ',': (e) => {
+        if (!e.shiftKey && video.paused) {
+          video.currentTime = Math.max(0, video.currentTime - (1/30))
+        }
+      },
+      '.': (e) => {
+        if (!e.shiftKey && video.paused) {
+          video.currentTime = Math.min(video.duration || 0, video.currentTime + (1/30))
+        }
+      },
+      
+      // Number keys for seeking
+      '0': () => { if (video.duration) video.currentTime = 0 },
+      '1': () => { if (video.duration) video.currentTime = video.duration * 0.1 },
+      '2': () => { if (video.duration) video.currentTime = video.duration * 0.2 },
+      '3': () => { if (video.duration) video.currentTime = video.duration * 0.3 },
+      '4': () => { if (video.duration) video.currentTime = video.duration * 0.4 },
+      '5': () => { if (video.duration) video.currentTime = video.duration * 0.5 },
+      '6': () => { if (video.duration) video.currentTime = video.duration * 0.6 },
+      '7': () => { if (video.duration) video.currentTime = video.duration * 0.7 },
+      '8': () => { if (video.duration) video.currentTime = video.duration * 0.8 },
+      '9': () => { if (video.duration) video.currentTime = video.duration * 0.9 },
+    }
+    
+    // Shift key combinations for playback speed
+    const shiftShortcuts: { [key: string]: (e: KeyboardEvent) => void } = {
+      ',': () => { video.playbackRate = Math.max(0.25, video.playbackRate - 0.25) },
+      '<': () => { video.playbackRate = Math.max(0.25, video.playbackRate - 0.25) },
+      '.': () => { video.playbackRate = Math.min(2, video.playbackRate + 0.25) },
+      '>': () => { video.playbackRate = Math.min(2, video.playbackRate + 0.25) },
+    }
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if user is typing in an input (but allow if target is video)
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+      
+      // Prevent default behavior for all our shortcuts
+      const key = e.key.toLowerCase()
+      
+      // Check for shift combinations first
+      if (e.shiftKey && shiftShortcuts[e.key]) {
+        e.preventDefault()
+        e.stopPropagation()
+        shiftShortcuts[e.key](e)
+        return
+      }
+      
+      // Check regular shortcuts
+      if (shortcuts[key] || shortcuts[e.key]) {
+        e.preventDefault()
+        e.stopPropagation()
+        const handler = shortcuts[key] || shortcuts[e.key]
+        handler(e)
+        return
+      }
+    }
+    
+    // Add event listeners in capture phase to intercept before native controls
+    const container = containerRef.current
+    
+    // Use capture phase for all listeners to ensure we get the event first
+    if (container) {
+      container.addEventListener('keydown', handleKeyDown, true)
+      container.tabIndex = -1
+    }
+    
+    if (video) {
+      video.addEventListener('keydown', handleKeyDown, true)
+    }
+    
+    // Also add to document for global shortcuts (capture phase)
+    document.addEventListener('keydown', handleKeyDown, true)
+    
+    return () => {
+      if (container) {
+        container.removeEventListener('keydown', handleKeyDown, true)
+      }
+      if (video) {
+        video.removeEventListener('keydown', handleKeyDown, true)
+      }
+      document.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, [])
+
   useEffect(() => {
     // Auto-enable the first subtitle track when video loads
     if (videoRef.current && subtitles.length > 0) {
