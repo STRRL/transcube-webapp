@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { WindowFullscreen, WindowUnfullscreen } from '../../wailsjs/runtime/runtime'
+import KeyboardShortcutsModal from './KeyboardShortcutsModal'
 
 interface VideoPlayerProps {
   src: string
@@ -24,6 +25,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
   // Track only overlay state for window-level fallback
   const [windowFsOverlay, setWindowFsOverlay] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Minimal two-step approach: standard on video, then WebKit fallback
@@ -186,12 +188,17 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
       // Fullscreen
       'f': () => toggleFullscreen(),
       'Escape': () => {
-        const v = video as any
-        if (document.fullscreenElement === v ||
-            (document as any).webkitFullscreenElement === v ||
-            v?.webkitDisplayingFullscreen === true ||
-            v?.webkitPresentationMode === 'fullscreen') {
-          exitFullscreen()
+        // Close shortcuts modal if open, otherwise exit fullscreen
+        if (showShortcutsModal) {
+          setShowShortcutsModal(false)
+        } else {
+          const v = video as any
+          if (document.fullscreenElement === v ||
+              (document as any).webkitFullscreenElement === v ||
+              v?.webkitDisplayingFullscreen === true ||
+              v?.webkitPresentationMode === 'fullscreen') {
+            exitFullscreen()
+          }
         }
       },
       
@@ -229,12 +236,14 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
       '9': () => { if (video.duration) video.currentTime = video.duration * 0.9 },
     }
     
-    // Shift key combinations for playback speed
+    // Shift key combinations for playback speed and help
     const shiftShortcuts: { [key: string]: (e: KeyboardEvent) => void } = {
       ',': () => { video.playbackRate = Math.max(0.25, video.playbackRate - 0.25) },
       '<': () => { video.playbackRate = Math.max(0.25, video.playbackRate - 0.25) },
       '.': () => { video.playbackRate = Math.min(2, video.playbackRate + 0.25) },
       '>': () => { video.playbackRate = Math.min(2, video.playbackRate + 0.25) },
+      '?': () => { setShowShortcutsModal(true) },
+      '/': () => { setShowShortcutsModal(true) }, // Handle both ? and / since Shift+/ = ?
     }
     
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -289,7 +298,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
       }
       document.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [])
+  }, [showShortcutsModal])
 
   useEffect(() => {
     // Auto-enable the first subtitle track when video loads
@@ -373,6 +382,12 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(({ src, post
         ))}
       </video>
       {/* No overlay: allow native controls to receive clicks */}
+      
+      {/* Keyboard shortcuts modal */}
+      <KeyboardShortcutsModal 
+        isOpen={showShortcutsModal} 
+        onClose={() => setShowShortcutsModal(false)} 
+      />
     </div>
   )
 })
