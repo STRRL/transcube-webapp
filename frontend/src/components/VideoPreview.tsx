@@ -221,20 +221,10 @@ export default function VideoPreview({
 
               {/* Status Badges */}
               <div className="flex items-center space-x-2 mt-2">
-                <Badge variant="outline" className="text-xs">
-                  <Hash className="h-3 w-3 mr-1" />
-                  {metadata.id}
-                </Badge>
-                
-                {metadata.hasSubtitles ? (
+                {metadata.hasSubtitles && (
                   <Badge variant="outline" className="text-xs text-green-600">
                     <CheckCircle2 className="h-3 w-3 mr-1" />
                     Subtitles Available
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-xs text-orange-600">
-                    <XCircle className="h-3 w-3 mr-1" />
-                    No Subtitles
                   </Badge>
                 )}
 

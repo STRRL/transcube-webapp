@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -28,12 +28,14 @@ import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchQuery, setSearchQuery] = useState('')
   const [processedVideos, setProcessedVideos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [videoToDelete, setVideoToDelete] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
 
   useEffect(() => {
     loadTasks()
@@ -49,6 +51,12 @@ export default function HomePage() {
       EventsOff('reload-videos')
     }
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const channel = params.get('channel')
+    setSelectedChannel(channel)
+  }, [location])
 
   const loadTasks = async () => {
     try {
@@ -95,6 +103,12 @@ export default function HomePage() {
   }
 
   const filteredVideos = processedVideos.filter(video => {
+    // First filter by selected channel if any
+    if (selectedChannel && video.channel !== selectedChannel) {
+      return false
+    }
+    
+    // Then apply search filter
     if (!searchQuery) return true
     const title = video.title || ''
     const channel = video.channel || ''
@@ -116,9 +130,11 @@ export default function HomePage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold mb-1">TransCube Library</h1>
+          <h1 className="text-2xl font-semibold mb-1">
+            {selectedChannel ? `Channel: ${selectedChannel}` : 'TransCube Library'}
+          </h1>
           <p className="text-muted-foreground">
-            {processedVideos.length} videos processed
+            {filteredVideos.length} {selectedChannel ? 'videos in this channel' : 'videos processed'}
           </p>
         </div>
         <Button onClick={() => navigate('/new')}>
