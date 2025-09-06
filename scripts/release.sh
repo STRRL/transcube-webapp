@@ -17,6 +17,12 @@ sed -i '' "s/\"productVersion\": \".*\"/\"productVersion\": \"$VERSION\"/" wails
 echo "Building version $VERSION..."
 wails build -clean
 
+# Rename app on macOS
+if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/transcube-webapp.app" ]; then
+    echo "Renaming app to TransCube.app..."
+    mv build/bin/transcube-webapp.app build/bin/TransCube.app
+fi
+
 # Sign and notarize (macOS only)
 if [[ "$OSTYPE" == "darwin"* ]] && [ -f ".env" ]; then
     source .env
