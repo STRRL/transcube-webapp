@@ -9,5 +9,12 @@
   "author": {
     "name": "STRRL",
     "email": "im@strrl.dev"
+  },
+  "info": {
+    "companyName": "Boring Design LLC",
+    "productName": "TransCube",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2025 Boring Design LLC",
+    "comments": "Video transcription and translation app built with Wails"
   }
 }

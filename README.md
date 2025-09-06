@@ -1,11 +1,10 @@
-# README
+# TransCube
+
+A desktop application for video transcription and translation, built with Wails and React.
 
 ## About
 
-This is the official Wails React-TS template.
-
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+TransCube is a cross-platform desktop application that helps you transcribe and translate video content. It downloads videos, transcribes them using advanced speech recognition, and provides an intuitive interface for viewing and managing your transcriptions.
 
 ## Live Development
 
@@ -17,3 +16,7 @@ to this in your browser, and you can call your Go code from devtools.
 ## Building
 
 To build a redistributable, production mode package, use `wails build`.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
