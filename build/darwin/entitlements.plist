@@ -2,20 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Minimum required entitlements for production -->
-    <!-- Allow JIT (required for WebView) -->
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <!-- Allow unsigned executable memory (for WebView JavaScript) -->
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <!-- Network client access -->
+    <!-- Allow app to be signed with Developer ID -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    
+    <!-- Allow network connections -->
     <key>com.apple.security.network.client</key>
     <true/>
-    <!-- File read/write permissions for user-selected files -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- Allow file access -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-    <!-- Disable library validation to allow external binaries (ffmpeg, yt-dlp) -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    
+    <!-- Required for notarization -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    
+    <!-- Allow JIT for JavaScript -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <!-- Hardened runtime -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
 </dict>
