@@ -18,6 +18,10 @@ export function GetCurrentTask() {
   return window['go']['main']['App']['GetCurrentTask']();
 }
 
+export function GetDebugInfo() {
+  return window['go']['main']['App']['GetDebugInfo']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

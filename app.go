@@ -9,6 +9,7 @@ import (
     "time"
     "transcube-webapp/internal/services"
     "transcube-webapp/internal/types"
+    "transcube-webapp/internal/utils"
 	
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -67,6 +68,15 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
     a.ctx = ctx
     a.logger.Info("TransCube starting up")
+    
+    // Log environment info for debugging
+    pathFinder := utils.NewPathFinder()
+    debugInfo := pathFinder.DebugInfo()
+    a.logger.Info("Environment Debug Info", 
+        "PATH", debugInfo["PATH"],
+        "WorkingDir", debugInfo["WorkingDir"],
+        "ffmpeg", debugInfo["ffmpeg"],
+        "yt-dlp", debugInfo["yt-dlp"])
 
     // Ensure workspace exists
     if err := a.storage.EnsureWorkspace(); err != nil {
@@ -485,4 +495,10 @@ func (a *App) processTask(task *types.Task) {
 	if a.currentTaskID == task.ID {
 		a.currentTaskID = ""
 	}
+}
+
+// GetDebugInfo returns debug information about the environment and PATH
+func (a *App) GetDebugInfo() map[string]string {
+	pathFinder := utils.NewPathFinder()
+	return pathFinder.DebugInfo()
 }

@@ -11,6 +11,8 @@ export function GetAllTasks():Promise<Array<types.Task>>;
 
 export function GetCurrentTask():Promise<types.Task>;
 
+export function GetDebugInfo():Promise<Record<string, string>>;
+
 export function GetSettings():Promise<types.Settings>;
 
 export function GetTaskSubtitles(arg1:string):Promise<Array<main.SubtitleEntry>>;

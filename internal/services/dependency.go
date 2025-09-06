@@ -1,14 +1,18 @@
 package services
 
 import (
-	"os/exec"
 	"transcube-webapp/internal/types"
+	"transcube-webapp/internal/utils"
 )
 
-type DependencyChecker struct{}
+type DependencyChecker struct {
+	pathFinder *utils.PathFinder
+}
 
 func NewDependencyChecker() *DependencyChecker {
-	return &DependencyChecker{}
+	return &DependencyChecker{
+		pathFinder: utils.NewPathFinder(),
+	}
 }
 
 // Check verifies all required dependencies are installed
@@ -22,7 +26,7 @@ func (d *DependencyChecker) Check() types.DependencyStatus {
 
 // isInstalled checks if a command exists in PATH
 func (d *DependencyChecker) isInstalled(cmd string) bool {
-	_, err := exec.LookPath(cmd)
+	_, err := d.pathFinder.FindExecutable(cmd)
 	return err == nil
 }
 

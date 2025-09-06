@@ -9,14 +9,19 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"transcube-webapp/internal/utils"
 )
 
 type Downloader struct {
-	storage *Storage
+	storage    *Storage
+	pathFinder *utils.PathFinder
 }
 
 func NewDownloader(storage *Storage) *Downloader {
-	return &Downloader{storage: storage}
+	return &Downloader{
+		storage:    storage,
+		pathFinder: utils.NewPathFinder(),
+	}
 }
 
 // VideoInfo represents the metadata returned by yt-dlp
@@ -34,7 +39,14 @@ type VideoInfo struct {
 // GetVideoInfo fetches video metadata using yt-dlp
 func (d *Downloader) GetVideoInfo(url string) (*VideoInfo, error) {
 	slog.Debug("Fetching video info with yt-dlp", "url", url)
-	cmd := exec.Command("yt-dlp", "--dump-json", "--no-playlist", url)
+	
+	ytDlpPath, err := d.pathFinder.FindExecutable("yt-dlp")
+	if err != nil {
+		slog.Error("yt-dlp not found", "error", err)
+		return nil, fmt.Errorf("yt-dlp not found: %v", err)
+	}
+	
+	cmd := exec.Command(ytDlpPath, "--dump-json", "--no-playlist", url)
 	output, err := cmd.Output()
 	if err != nil {
 		slog.Error("yt-dlp failed to get video info", "url", url, "error", err)
@@ -67,9 +79,15 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 		return err
 	}
 	
+    ytDlpPath, err := d.pathFinder.FindExecutable("yt-dlp")
+    if err != nil {
+        slog.Error("yt-dlp not found", "error", err)
+        return fmt.Errorf("yt-dlp not found: %v", err)
+    }
+    
     // First attempt: MP4 (best compatibility)
     mp4Path := filepath.Join(outputDir, "video.mp4")
-    cmdMp4 := exec.Command("yt-dlp",
+    cmdMp4 := exec.Command(ytDlpPath,
         "-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/bestvideo[height<=1080][vcodec^=h264]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
         "--merge-output-format", "mp4",
         "--continue",
@@ -91,7 +109,7 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
     d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
 
     webmPath := filepath.Join(outputDir, "video.webm")
-    cmdWebm := exec.Command("yt-dlp",
+    cmdWebm := exec.Command(ytDlpPath,
         "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
         "--merge-output-format", "webm",
         "--continue",
@@ -168,7 +186,13 @@ func (d *Downloader) ExtractVideoID(url string) string {
 func (d *Downloader) ExtractAudio(videoPath string, audioPath string) error {
 	slog.Info("Extracting audio from video", "videoPath", videoPath, "audioPath", audioPath)
 	
-	cmd := exec.Command("ffmpeg",
+	ffmpegPath, err := d.pathFinder.FindExecutable("ffmpeg")
+	if err != nil {
+		slog.Error("ffmpeg not found", "error", err)
+		return fmt.Errorf("ffmpeg not found: %v", err)
+	}
+	
+	cmd := exec.Command(ffmpegPath,
 		"-i", videoPath,
 		"-vn", // no video
 		"-acodec", "aac",
