@@ -26,6 +26,14 @@ Before running TransCube, make sure you have these tools installed:
 
 ### Installation
 
+#### Using Homebrew (macOS)
+
+```bash
+brew install --cask strrl/collective/transcube
+```
+
+#### Manual Installation
+
 1. Download the latest release for your platform from the [Releases page](https://github.com/strrl/transcube-webapp/releases)
 2. Install and run the application
 3. Configure your workspace folder in Settings
