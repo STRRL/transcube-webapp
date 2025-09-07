@@ -110,10 +110,35 @@ if [[ -n "$GIT_TAG" ]]; then
     echo ""
     echo "Creating GitHub release..."
     
+    # Determine commit to target for the release/tag
+    TARGET_SHA=$(git rev-list -n 1 "$GIT_TAG" 2>/dev/null || git rev-parse HEAD)
+    CREATE_ARGS=()
+    
+    # Ensure the tag exists on origin, otherwise try to push it or fall back to --target
+    if ! git ls-remote --tags origin "$GIT_TAG" | grep -q "$GIT_TAG"; then
+        echo "Tag $GIT_TAG not found on origin. Attempting to push it..."
+        if git push origin "$GIT_TAG"; then
+            echo "Pushed tag $GIT_TAG to origin."
+        else
+            echo "Unable to push tag. Will create release with --target $TARGET_SHA"
+            CREATE_ARGS=(--target "$TARGET_SHA")
+        fi
+    fi
+    
+    # Collect assets to upload (currently DMG on macOS if present)
+    ASSETS=()
+    if [[ -n "$DMG_NAME" && -f "build/bin/$DMG_NAME" ]]; then
+        ASSETS+=("build/bin/$DMG_NAME")
+    fi
+    
     # Check if release already exists
     if gh release view "$GIT_TAG" &> /dev/null; then
         echo "Release $GIT_TAG already exists. Uploading assets..."
-        gh release upload "$GIT_TAG" "build/bin/$DMG_NAME" --clobber
+        if [[ ${#ASSETS[@]} -gt 0 ]]; then
+            gh release upload "$GIT_TAG" "${ASSETS[@]}" --clobber
+        else
+            echo "No assets to upload. Skipping asset upload."
+        fi
     else
         echo "Creating new release $GIT_TAG..."
         gh release create "$GIT_TAG" \
@@ -134,7 +159,8 @@ if [[ -n "$GIT_TAG" ]]; then
 - AI-powered summaries
 
 Built with Wails v2" \
-            "build/bin/$DMG_NAME"
+            "${CREATE_ARGS[@]}" \
+            "${ASSETS[@]}"
     fi
     
     echo "Release created/updated: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$GIT_TAG"
