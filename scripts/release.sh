@@ -53,6 +53,10 @@ sed -i '' "s/\"productVersion\": \".*\"/\"productVersion\": \"$VERSION\"/" wails
 
 # Build
 echo "Building version $VERSION..."
+# Enforce minimum macOS version at link time when building on macOS
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    export MACOSX_DEPLOYMENT_TARGET="26.0"
+fi
 wails build -clean
 
 # Restore version to 0.0.1
