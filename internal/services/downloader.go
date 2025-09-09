@@ -39,103 +39,102 @@ type VideoInfo struct {
 // GetVideoInfo fetches video metadata using yt-dlp
 func (d *Downloader) GetVideoInfo(url string) (*VideoInfo, error) {
 	slog.Debug("Fetching video info with yt-dlp", "url", url)
-	
+
 	ytDlpPath, err := d.pathFinder.FindExecutable("yt-dlp")
 	if err != nil {
 		slog.Error("yt-dlp not found", "error", err)
 		return nil, fmt.Errorf("yt-dlp not found: %v", err)
 	}
-	
+
 	cmd := exec.Command(ytDlpPath, "--dump-json", "--no-playlist", url)
 	output, err := cmd.Output()
 	if err != nil {
 		slog.Error("yt-dlp failed to get video info", "url", url, "error", err)
 		return nil, d.parseError(err)
 	}
-	
+
 	var info VideoInfo
 	if err := json.Unmarshal(output, &info); err != nil {
 		slog.Error("Failed to parse video JSON", "error", err)
 		return nil, fmt.Errorf("failed to parse video info: %v", err)
 	}
-	
+
 	slog.Info("Video info retrieved", "id", info.ID, "title", info.Title, "duration", info.Duration)
-	
+
 	// Use uploader if channel is empty
 	if info.Channel == "" {
 		info.Channel = info.Uploader
 	}
-	
+
 	return &info, nil
 }
 
 // DownloadVideo downloads the video file (with audio)
 func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 	slog.Info("Starting video download", "url", url, "outputDir", outputDir)
-	
+
 	// Ensure output directory exists
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		slog.Error("Failed to create output directory", "dir", outputDir, "error", err)
 		return err
 	}
-	
-    ytDlpPath, err := d.pathFinder.FindExecutable("yt-dlp")
-    if err != nil {
-        slog.Error("yt-dlp not found", "error", err)
-        return fmt.Errorf("yt-dlp not found: %v", err)
-    }
-    
-    // First attempt: MP4 (best compatibility)
-    mp4Path := filepath.Join(outputDir, "video.mp4")
-    cmdMp4 := exec.Command(ytDlpPath,
-        "-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/bestvideo[height<=1080][vcodec^=h264]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "--merge-output-format", "mp4",
-        "--continue",
-        "--no-playlist",
-        "-o", mp4Path,
-        url,
-    )
 
-    slog.Debug("Running yt-dlp (mp4) download command")
-    output, err := cmdMp4.CombinedOutput()
-    if err == nil {
-        slog.Info("Video downloaded successfully (mp4)", "outputDir", outputDir)
-        d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)")
-        return nil
-    }
+	ytDlpPath, err := d.pathFinder.FindExecutable("yt-dlp")
+	if err != nil {
+		slog.Error("yt-dlp not found", "error", err)
+		return fmt.Errorf("yt-dlp not found: %v", err)
+	}
 
-    // Fallback: WebM (more permissive for VP9/Opus)
-    slog.Warn("MP4 download failed; attempting WebM fallback", "error", err)
-    d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
+	// First attempt: MP4 (best compatibility)
+	mp4Path := filepath.Join(outputDir, "video.mp4")
+	cmdMp4 := exec.Command(ytDlpPath,
+		"-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/bestvideo[height<=1080][vcodec^=h264]+bestaudio/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+		"--merge-output-format", "mp4",
+		"--continue",
+		"--no-playlist",
+		"-o", mp4Path,
+		url,
+	)
 
-    webmPath := filepath.Join(outputDir, "video.webm")
-    cmdWebm := exec.Command(ytDlpPath,
-        "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "--merge-output-format", "webm",
-        "--continue",
-        "--no-playlist",
-        "-o", webmPath,
-        url,
-    )
-    slog.Debug("Running yt-dlp (webm) download command")
-    output2, err2 := cmdWebm.CombinedOutput()
-    if err2 != nil {
-        slog.Error("Video download failed (webm fallback)", "error", err2, "output", string(output2))
-        d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2))
-        return d.parseError(err2)
-    }
+	slog.Debug("Running yt-dlp (mp4) download command")
+	output, err := cmdMp4.CombinedOutput()
+	if err == nil {
+		slog.Info("Video downloaded successfully (mp4)", "outputDir", outputDir)
+		d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)")
+		return nil
+	}
 
-    slog.Info("Video downloaded successfully (webm)", "outputDir", outputDir)
-    d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)")
-    return nil
+	// Fallback: WebM (more permissive for VP9/Opus)
+	slog.Warn("MP4 download failed; attempting WebM fallback", "error", err)
+	d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
+
+	webmPath := filepath.Join(outputDir, "video.webm")
+	cmdWebm := exec.Command(ytDlpPath,
+		"-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+		"--merge-output-format", "webm",
+		"--continue",
+		"--no-playlist",
+		"-o", webmPath,
+		url,
+	)
+	slog.Debug("Running yt-dlp (webm) download command")
+	output2, err2 := cmdWebm.CombinedOutput()
+	if err2 != nil {
+		slog.Error("Video download failed (webm fallback)", "error", err2, "output", string(output2))
+		d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2))
+		return d.parseError(err2)
+	}
+
+	slog.Info("Video downloaded successfully (webm)", "outputDir", outputDir)
+	d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)")
+	return nil
 }
-
 
 // parseError parses yt-dlp errors to provide user-friendly messages
 func (d *Downloader) parseError(err error) error {
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		stderr := string(exitErr.Stderr)
-		
+
 		// Check for common error patterns
 		if strings.Contains(stderr, "ERROR: Private video") {
 			return fmt.Errorf("video is private")
@@ -155,13 +154,13 @@ func (d *Downloader) parseError(err error) error {
 		if strings.Contains(stderr, "HTTP Error 410") {
 			return fmt.Errorf("video no longer exists (410)")
 		}
-		
+
 		// Extract video ID if present for better error context
 		if match := regexp.MustCompile(`\[youtube\] ([a-zA-Z0-9_-]+):`).FindStringSubmatch(stderr); len(match) > 1 {
 			return fmt.Errorf("failed to process video %s: %v", match[1], err)
 		}
 	}
-	
+
 	return fmt.Errorf("download failed: %v", err)
 }
 
@@ -171,27 +170,27 @@ func (d *Downloader) ExtractVideoID(url string) string {
 		`(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)`,
 		`^([^&\n?#]+)$`,
 	}
-	
+
 	for _, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
 		if match := re.FindStringSubmatch(url); len(match) > 1 {
 			return match[1]
 		}
 	}
-	
+
 	return ""
 }
 
 // ExtractAudio extracts audio from video file for transcription
 func (d *Downloader) ExtractAudio(videoPath string, audioPath string) error {
 	slog.Info("Extracting audio from video", "videoPath", videoPath, "audioPath", audioPath)
-	
+
 	ffmpegPath, err := d.pathFinder.FindExecutable("ffmpeg")
 	if err != nil {
 		slog.Error("ffmpeg not found", "error", err)
 		return fmt.Errorf("ffmpeg not found: %v", err)
 	}
-	
+
 	cmd := exec.Command(ffmpegPath,
 		"-i", videoPath,
 		"-vn", // no video
@@ -201,13 +200,13 @@ func (d *Downloader) ExtractAudio(videoPath string, audioPath string) error {
 		"-y", // overwrite output
 		audioPath,
 	)
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("Audio extraction failed", "error", err, "output", string(output))
 		return fmt.Errorf("failed to extract audio: %v", err)
 	}
-	
+
 	slog.Info("Audio extracted successfully", "audioPath", audioPath)
 	return nil
 }

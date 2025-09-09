@@ -24,13 +24,13 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Range, Content-Type")
-	
+
 	// Handle preflight requests
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	
+
 	// Only handle specific media paths
 	if !strings.HasPrefix(r.URL.Path, "/media/") {
 		http.NotFound(w, r)
@@ -73,7 +73,7 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Try to find corresponding SRT file
 		srtFilename := strings.TrimSuffix(filename, ".vtt") + ".srt"
 		srtPath := filepath.Join(workDir, srtFilename)
-		
+
 		if _, err := os.Stat(srtPath); err == nil {
 			// SRT file exists, convert it to VTT on the fly
 			srtFile, err := os.Open(srtPath)
@@ -82,14 +82,14 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer srtFile.Close()
-			
+
 			// Convert SRT to VTT
 			var vttBuffer bytes.Buffer
 			if err := ConvertSRTToVTT(srtFile, &vttBuffer); err != nil {
 				http.Error(w, "Failed to convert subtitle", http.StatusInternalServerError)
 				return
 			}
-			
+
 			// Serve the converted VTT
 			w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
