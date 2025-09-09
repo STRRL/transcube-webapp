@@ -11,18 +11,6 @@ if ! command -v wails &> /dev/null; then
     exit 1
 fi
 
-if ! command -v gh &> /dev/null; then
-    echo "Error: GitHub CLI (gh) is not installed."
-    echo "Install it with: brew install gh"
-    exit 1
-fi
-
-if ! gh auth status &> /dev/null; then
-    echo "Error: Not authenticated with GitHub."
-    echo "Run: gh auth login"
-    exit 1
-fi
-
 if [[ "$OSTYPE" == "darwin"* ]]; then
     if ! command -v xcrun &> /dev/null; then
         echo "Error: Xcode Command Line Tools not installed."
@@ -69,6 +57,12 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/transcube-webapp.app" ]; then
     mv build/bin/transcube-webapp.app build/bin/TransCube.app
 fi
 
+# Replace icon with custom appicon.icns
+if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/TransCube.app" ] && [ -f "build/appicon.icns" ]; then
+    echo "Replacing app icon..."
+    cp build/appicon.icns build/bin/TransCube.app/Contents/Resources/iconfile.icns
+fi
+
 # Sign and notarize (macOS only)
 if [[ "$OSTYPE" == "darwin"* ]] && [ -f ".env" ]; then
     source .env
@@ -108,70 +102,3 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/TransCube.app" ]; then
 fi
 
 echo "Done! Build available in build/bin/"
-
-# Create GitHub Release if we have a tag
-if [[ -n "$GIT_TAG" ]]; then
-    echo ""
-    echo "Creating GitHub release..."
-    
-    # Determine commit to target for the release/tag
-    TARGET_SHA=$(git rev-list -n 1 "$GIT_TAG" 2>/dev/null || git rev-parse HEAD)
-    CREATE_ARGS=()
-    
-    # Ensure the tag exists on origin, otherwise try to push it or fall back to --target
-    if ! git ls-remote --tags origin "$GIT_TAG" | grep -q "$GIT_TAG"; then
-        echo "Tag $GIT_TAG not found on origin. Attempting to push it..."
-        if git push origin "$GIT_TAG"; then
-            echo "Pushed tag $GIT_TAG to origin."
-        else
-            echo "Unable to push tag. Will create release with --target $TARGET_SHA"
-            CREATE_ARGS=(--target "$TARGET_SHA")
-        fi
-    fi
-    
-    # Collect assets to upload (currently DMG on macOS if present)
-    ASSETS=()
-    if [[ -n "$DMG_NAME" && -f "build/bin/$DMG_NAME" ]]; then
-        ASSETS+=("build/bin/$DMG_NAME")
-    fi
-    
-    # Check if release already exists
-    if gh release view "$GIT_TAG" &> /dev/null; then
-        echo "Release $GIT_TAG already exists. Uploading assets..."
-        if [[ ${#ASSETS[@]} -gt 0 ]]; then
-            gh release upload "$GIT_TAG" "${ASSETS[@]}" --clobber
-        else
-            echo "No assets to upload. Skipping asset upload."
-        fi
-    else
-        echo "Creating new release $GIT_TAG..."
-        gh release create "$GIT_TAG" \
-            --title "Release $GIT_TAG" \
-            --notes "## TransCube $VERSION
-
-### Downloads
-- **macOS**: Download the DMG file below
-
-### Installation
-1. Download the DMG file
-2. Open the DMG and drag TransCube to Applications
-3. On first launch, you may need to right-click and select 'Open' due to Gatekeeper
-
-### What's New
-- Video transcription with AI-powered speech recognition
-- Multi-language support
-- AI-powered summaries
-
-Built with Wails v2" \
-            "${CREATE_ARGS[@]}" \
-            "${ASSETS[@]}"
-    fi
-    
-    echo "Release created/updated: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$GIT_TAG"
-else
-    echo ""
-    echo "No git tag found. Skipping GitHub release creation."
-    echo "To create a release, tag your commit first:"
-    echo "  git tag v0.1.2"
-    echo "  git push origin v0.1.2"
-fi
