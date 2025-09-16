@@ -24,7 +24,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { GetAllTasks, DeleteTask } from '../../wailsjs/go/main/App'
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -41,14 +41,14 @@ export default function HomePage() {
     loadTasks()
     
     // Listen for reload-videos event from backend
-    const cleanup = EventsOn('reload-videos', () => {
+    const offReload = EventsOn('reload-videos', () => {
       console.log('Received reload-videos event from backend')
       loadTasks()
     })
-    
+
     // Cleanup on unmount
     return () => {
-      EventsOff('reload-videos')
+      offReload()
     }
   }, [])
 

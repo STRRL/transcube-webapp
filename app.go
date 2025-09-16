@@ -346,9 +346,17 @@ func (a *App) DeleteTask(taskID string) error {
 	a.logger.Info("Task deleted successfully", "taskId", taskID)
 
 	// Emit event to frontend to reload videos
-	runtime.EventsEmit(a.ctx, "reload-videos")
+	a.emitReloadEvent()
 
 	return nil
+}
+
+func (a *App) emitReloadEvent() {
+	if a.ctx == nil {
+		a.logger.Warn("Cannot emit reload event before startup context is set")
+		return
+	}
+	runtime.EventsEmit(a.ctx, "reload-videos")
 }
 
 // processTask handles the actual task processing
@@ -488,6 +496,7 @@ func (a *App) processTask(task *types.Task) {
 
 	// Mark as done
 	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
+	a.emitReloadEvent()
 	a.logger.Info("Task completed successfully", "taskId", task.ID)
 
 	// Clear current task ID

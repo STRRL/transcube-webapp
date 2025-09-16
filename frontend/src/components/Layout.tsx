@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { GetAllTasks } from '../../wailsjs/go/main/App'
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { types } from '../../wailsjs/go/models'
 
 export default function Layout() {
@@ -29,13 +29,13 @@ export default function Layout() {
 
   useEffect(() => {
     loadChannels()
-    
-    const cleanup = EventsOn('reload-videos', () => {
+
+    const offReload = EventsOn('reload-videos', () => {
       loadChannels()
     })
-    
+
     return () => {
-      EventsOff('reload-videos')
+      offReload()
     }
   }, [])
 
