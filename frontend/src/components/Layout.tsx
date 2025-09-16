@@ -134,7 +134,7 @@ export default function Layout() {
           )}
         </div>
 
-        <div className="absolute bottom-0 w-64 p-4 border-t bg-background">
+        <div className="absolute bottom-0 w-64 p-4 border-t border-r bg-background">
           <Link
             to="/settings"
             className={cn(
