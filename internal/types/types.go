@@ -36,12 +36,16 @@ type Task struct {
 
 // VideoMetadata contains information about a YouTube video
 type VideoMetadata struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Channel     string    `json:"channel"`
-	Duration    int       `json:"duration"` // in seconds
-	PublishedAt time.Time `json:"publishedAt"`
-	Thumbnail   string    `json:"thumbnail"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Channel     string `json:"channel"`
+	ChannelID   string `json:"channelId"`
+	Duration    int    `json:"duration"` // in seconds
+	PublishedAt string `json:"publishedAt"`
+	Thumbnail   string `json:"thumbnail"`
+	ViewCount   int64  `json:"viewCount"`
+	LikeCount   int64  `json:"likeCount"`
+	Description string `json:"description"`
 }
 
 // Subtitle represents a subtitle entry

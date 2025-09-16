@@ -150,18 +150,41 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 		return nil, err
 	}
 
+	publishedAt := ""
+	if info.UploadDate != "" {
+		if parsed, err := time.Parse("20060102", info.UploadDate); err == nil {
+			publishedAt = parsed.UTC().Format(time.RFC3339)
+		} else {
+			a.logger.Warn("Failed to parse upload date", "uploadDate", info.UploadDate, "error", err)
+		}
+	}
+	if publishedAt == "" && info.Timestamp > 0 {
+		publishedAt = time.Unix(info.Timestamp, 0).UTC().Format(time.RFC3339)
+	}
+	if publishedAt == "" && info.ReleaseTS > 0 {
+		publishedAt = time.Unix(info.ReleaseTS, 0).UTC().Format(time.RFC3339)
+	}
+
 	a.logger.Info("Video metadata retrieved",
 		"id", info.ID,
 		"title", info.Title,
 		"channel", info.Channel,
-		"duration", info.Duration)
+		"duration", info.Duration,
+		"views", info.ViewCount,
+		"likes", info.LikeCount,
+		"publishedAt", publishedAt)
 
 	return &types.VideoMetadata{
-		ID:        info.ID,
-		Title:     info.Title,
-		Channel:   info.Channel,
-		Duration:  int(info.Duration),
-		Thumbnail: info.Thumbnail,
+		ID:          info.ID,
+		Title:       info.Title,
+		Channel:     info.Channel,
+		ChannelID:   info.ChannelID,
+		Duration:    int(info.Duration),
+		PublishedAt: publishedAt,
+		Thumbnail:   info.Thumbnail,
+		ViewCount:   info.ViewCount,
+		LikeCount:   info.LikeCount,
+		Description: info.Description,
 	}, nil
 }
 
