@@ -70,7 +70,7 @@ export default function Layout() {
   return (
     <div className="flex h-full w-full bg-background">
       {/* Sidebar */}
-      <div className="w-64 border-r bg-muted/10">
+      <div className="relative w-64 border-r bg-muted/10">
         <div className="p-4 border-b">
           <h1 className="font-semibold text-lg">TransCube</h1>
         </div>
@@ -134,7 +134,7 @@ export default function Layout() {
           )}
         </div>
 
-        <div className="absolute bottom-0 w-64 p-4 border-t">
+        <div className="absolute bottom-0 w-64 p-4 border-t border-r bg-background">
           <Link
             to="/settings"
             className={cn(
