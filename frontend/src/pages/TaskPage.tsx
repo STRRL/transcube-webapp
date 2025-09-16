@@ -197,65 +197,31 @@ export default function TaskPage() {
   
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Video Player Area */}
-      <div className="bg-black relative h-[60vh] flex-shrink-0">
-        {video.status === 'done' && videoSrc ? (
-          <VideoPlayer 
-            ref={videoPlayerRef}
-            src={videoSrc}
-            poster={video.thumbnail}
-            subtitles={subtitles}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="relative max-w-full max-h-full">
-              <img 
-                src={video.thumbnail || 'https://via.placeholder.com/1280x720'} 
-                alt={video.title || 'Video'}
-                className="max-w-full max-h-[60vh] object-contain"
-              />
-              {video.videoId && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Button 
-                    size="icon" 
-                    className="w-16 h-16 rounded-full"
-                    onClick={() => window.open(`https://youtube.com/watch?v=${video.videoId}`, '_blank')}
-                  >
-                    <Play className="h-8 w-8" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Controls Bar */}
-      <div className="border-b p-4 flex items-center justify-between">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={() => navigate('/')}
-        >
-          <ChevronLeft className="h-4 w-4 mr-2" />
-          Back to Library
-        </Button>
-        <div className="flex gap-2">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="border-b bg-background">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/')}
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Back to Library
+          </Button>
           {video.videoId && (
             <Button 
-              variant="secondary" 
+              variant="outline" 
               size="sm"
               onClick={handleCopyLink}
             >
               {copied ? (
                 <>
-                  <Check className="h-4 w-4 mr-2" />
+                  <Check className="mr-2 h-4 w-4" />
                   Copied!
                 </>
               ) : (
                 <>
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy className="mr-2 h-4 w-4" />
                   Copy Link
                 </>
               )}
@@ -264,124 +230,151 @@ export default function TaskPage() {
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="flex-1 overflow-auto">
-        <div className="p-8">
-          {/* Video Info */}
-          <div className="mb-6">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h1 className="text-2xl font-semibold mb-2">{video.title || 'Untitled'}</h1>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  {video.channel && <Badge variant="secondary">{video.channel}</Badge>}
-                  {video.duration && (
-                    <span className="flex items-center">
-                      <Clock className="h-3 w-3 mr-1" />
-                      {video.duration}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Content Tabs */}
-          <Tabs defaultValue="about" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="about">About</TabsTrigger>
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="transcript">Transcript</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="about" className="space-y-4">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">Video Information</h3>
-                  <div className="space-y-2 text-sm">
-                    <p>
-                      <span className="text-muted-foreground">Video ID:</span> {video.videoId || 'N/A'}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Source Language:</span> {video.sourceLang || 'Not specified'}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Status:</span> {video.status}
-                    </p>
-                    {video.createdAt && (
-                      <p>
-                        <span className="text-muted-foreground">Started:</span> {new Date(video.createdAt).toLocaleString()}
-                      </p>
-                    )}
-                    {video.completedAt && (
-                      <p>
-                        <span className="text-muted-foreground">Completed:</span> {new Date(video.completedAt).toLocaleString()}
-                      </p>
-                    )}
-                    {video.workDir && (
-                      <p>
-                        <span className="text-muted-foreground">Work Directory:</span> {video.workDir}
-                      </p>
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8">
+          <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+            <div className="relative aspect-video w-full bg-black">
+              {video.status === 'done' && videoSrc ? (
+                <VideoPlayer 
+                  ref={videoPlayerRef}
+                  src={videoSrc}
+                  poster={video.thumbnail}
+                  subtitles={subtitles}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                  <div className="relative h-full w-full">
+                    <img 
+                      src={video.thumbnail || 'https://via.placeholder.com/1280x720'} 
+                      alt={video.title || 'Video'}
+                      className="h-full w-full object-contain"
+                    />
+                    {video.videoId && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Button 
+                          size="icon" 
+                          className="h-16 w-16 rounded-full"
+                          onClick={() => window.open(`https://youtube.com/watch?v=${video.videoId}`, '_blank')}
+                        >
+                          <Play className="h-8 w-8" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-            </TabsContent>
+              )}
+            </div>
+          </section>
 
-            <TabsContent value="summary" className="space-y-4">
-              <div className="space-y-4">
-                {video.status === 'done' ? (
-                  summary ? (
-                    <>
-                      <div>
-                        <h3 className="text-lg font-semibold mb-1">Main Topic</h3>
-                        <p className="text-sm text-muted-foreground">{summary.content.mainTopic}</p>
-                      </div>
-                      {summary.content.keyPoints && summary.content.keyPoints.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold mb-2">Key Points</h3>
-                          <ul className="list-disc list-inside space-y-1">
-                            {summary.content.keyPoints.map((pt, i) => (
-                              <li key={i} className="text-sm">{pt}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {summary.content.conclusion && (
-                        <div>
-                          <h3 className="text-lg font-semibold mb-1">Conclusion</h3>
-                          <p className="text-sm text-muted-foreground">{summary.content.conclusion}</p>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">Loading summary...</div>
-                  )
-                ) : (
-                  <div className="text-sm text-muted-foreground">Summary will be available after processing completes.</div>
+          <section className="rounded-2xl bg-card p-6 shadow-sm">
+            <div className="mb-6">
+              <h1 className="mb-2 text-2xl font-semibold">{video.title || 'Untitled'}</h1>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                {video.channel && <Badge variant="secondary">{video.channel}</Badge>}
+                {video.duration && (
+                  <span className="flex items-center">
+                    <Clock className="mr-1 h-3 w-3" />
+                    {video.duration}
+                  </span>
                 )}
               </div>
-            </TabsContent>
+            </div>
 
-            <TabsContent value="transcript" className="space-y-4">
-              {transcriptSubtitles.length > 0 ? (
-                <BilingualSubtitle 
-                  subtitles={transcriptSubtitles}
-                  onTimeClick={handleTimeClick}
-                />
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>
-                    {video.status === 'done' 
-                      ? 'No transcript available (no speech detected or subtitles empty)'
-                      : 'Transcript will be available after processing completes'}
-                  </p>
+            <Tabs defaultValue="about" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="about">About</TabsTrigger>
+                <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="transcript">Transcript</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="about" className="space-y-4">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold">Video Information</h3>
+                    <div className="space-y-2 text-sm">
+                      <p>
+                        <span className="text-muted-foreground">Video ID:</span> {video.videoId || 'N/A'}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground">Source Language:</span> {video.sourceLang || 'Not specified'}
+                      </p>
+                      <p>
+                        <span className="text-muted-foreground">Status:</span> {video.status}
+                      </p>
+                      {video.createdAt && (
+                        <p>
+                          <span className="text-muted-foreground">Started:</span> {new Date(video.createdAt).toLocaleString()}
+                        </p>
+                      )}
+                      {video.completedAt && (
+                        <p>
+                          <span className="text-muted-foreground">Completed:</span> {new Date(video.completedAt).toLocaleString()}
+                        </p>
+                      )}
+                      {video.workDir && (
+                        <p>
+                          <span className="text-muted-foreground">Work Directory:</span> {video.workDir}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </TabsContent>
+              </TabsContent>
 
-            
-          </Tabs>
+              <TabsContent value="summary" className="space-y-4">
+                <div className="space-y-4">
+                  {video.status === 'done' ? (
+                    summary ? (
+                      <>
+                        <div>
+                          <h3 className="mb-1 text-lg font-semibold">Main Topic</h3>
+                          <p className="text-sm text-muted-foreground">{summary.content.mainTopic}</p>
+                        </div>
+                        {summary.content.keyPoints && summary.content.keyPoints.length > 0 && (
+                          <div>
+                            <h3 className="mb-2 text-lg font-semibold">Key Points</h3>
+                            <ul className="list-inside list-disc space-y-1">
+                              {summary.content.keyPoints.map((pt, i) => (
+                                <li key={i} className="text-sm">{pt}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {summary.content.conclusion && (
+                          <div>
+                            <h3 className="mb-1 text-lg font-semibold">Conclusion</h3>
+                            <p className="text-sm text-muted-foreground">{summary.content.conclusion}</p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">Loading summary...</div>
+                    )
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Summary will be available after processing completes.</div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="transcript" className="space-y-4">
+                {transcriptSubtitles.length > 0 ? (
+                  <BilingualSubtitle 
+                    subtitles={transcriptSubtitles}
+                    onTimeClick={handleTimeClick}
+                  />
+                ) : (
+                  <div className="py-8 text-center text-muted-foreground">
+                    <FileText className="mx-auto mb-4 h-12 w-12 opacity-50" />
+                    <p>
+                      {video.status === 'done' 
+                        ? 'No transcript available (no speech detected or subtitles empty)'
+                        : 'Transcript will be available after processing completes'}
+                    </p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </section>
         </div>
       </div>
     </div>
