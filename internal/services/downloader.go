@@ -34,6 +34,11 @@ type VideoInfo struct {
 	Thumbnail   string  `json:"thumbnail"`
 	Description string  `json:"description"`
 	UploadDate  string  `json:"upload_date"`
+	ChannelID   string  `json:"channel_id,omitempty"`
+	ViewCount   int64   `json:"view_count,omitempty"`
+	LikeCount   int64   `json:"like_count,omitempty"`
+	Timestamp   int64   `json:"timestamp,omitempty"`
+	ReleaseTS   int64   `json:"release_timestamp,omitempty"`
 }
 
 // GetVideoInfo fetches video metadata using yt-dlp

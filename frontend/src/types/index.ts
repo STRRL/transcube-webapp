@@ -58,7 +58,11 @@ export interface VideoMetadata {
   id: string
   title: string
   channel: string
+  channelId?: string
   duration: number
-  publishedAt: string
-  thumbnailUrl: string
+  publishedAt?: string
+  thumbnail: string
+  viewCount?: number
+  likeCount?: number
+  description?: string
 }

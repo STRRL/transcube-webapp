@@ -130,14 +130,17 @@ export namespace types {
 		    return a;
 		}
 	}
-	export class VideoMetadata {
-	    id: string;
-	    title: string;
-	    channel: string;
-	    duration: number;
-	    // Go type: time
-	    publishedAt: any;
-	    thumbnail: string;
+        export class VideoMetadata {
+            id: string;
+            title: string;
+            channel: string;
+            channelId: string;
+            duration: number;
+            publishedAt: string;
+            thumbnail: string;
+            viewCount: number;
+            likeCount: number;
+            description: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new VideoMetadata(source);
@@ -148,12 +151,16 @@ export namespace types {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.channel = source["channel"];
-	        this.duration = source["duration"];
-	        this.publishedAt = this.convertValues(source["publishedAt"], null);
-	        this.thumbnail = source["thumbnail"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
+                this.channelId = source["channelId"];
+                this.duration = source["duration"];
+                this.publishedAt = source["publishedAt"];
+                this.thumbnail = source["thumbnail"];
+                this.viewCount = source["viewCount"];
+                this.likeCount = source["likeCount"];
+                this.description = source["description"];
+            }
+
+                convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
 		    }
