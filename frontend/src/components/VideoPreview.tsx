@@ -22,7 +22,7 @@ export interface VideoMetadata {
   channel: string
   channelId: string
   duration: string
-  publishedAt: string
+  publishedAt?: string
   thumbnail: string
   views: string
   likes: string
@@ -43,33 +43,46 @@ async function parseYouTubeUrl(url: string): Promise<VideoMetadata | null> {
   try {
     const metadata = await ParseVideoUrl(url)
     if (!metadata) return null
-    
+
     // Convert duration from seconds to readable format
-    const duration = metadata.duration || 0
+    const duration = typeof metadata.duration === 'number' ? metadata.duration : 0
     const hours = Math.floor(duration / 3600)
     const minutes = Math.floor((duration % 3600) / 60)
     const seconds = duration % 60
-    
+
     let durationStr = ''
     if (hours > 0) {
       durationStr = `${hours}h ${minutes}m`
     } else {
       durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
     }
-    
+
+    const formatCount = (value: unknown) => {
+      if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+        return 'N/A'
+      }
+      return value.toLocaleString()
+    }
+
+    const publishedAt =
+      typeof metadata.publishedAt === 'string' && metadata.publishedAt.trim() !== ''
+        ? metadata.publishedAt
+        : undefined
+
     return {
       id: metadata.id,
       title: metadata.title,
       channel: metadata.channel,
-      channelId: '',
+      channelId: metadata.channelId || '',
       duration: durationStr,
-      publishedAt: metadata.publishedAt || new Date().toISOString(),
+      publishedAt,
       thumbnail: metadata.thumbnail,
-      views: '',
-      likes: '',
-      description: '',
-      isValid: true,
-      hasSubtitles: false
+      views: formatCount(metadata.viewCount),
+      likes: formatCount(metadata.likeCount),
+      description: metadata.description || '',
+      isValid: Boolean(metadata.id),
+      hasSubtitles: false,
+      availableLanguages: []
     }
   } catch (err: any) {
     return {
@@ -78,7 +91,7 @@ async function parseYouTubeUrl(url: string): Promise<VideoMetadata | null> {
       channel: '',
       channelId: '',
       duration: '',
-      publishedAt: '',
+      publishedAt: undefined,
       thumbnail: '',
       views: '',
       likes: '',
@@ -169,6 +182,26 @@ export default function VideoPreview({
     return null
   }
 
+  const publishedDateLabel = (() => {
+    if (!metadata.publishedAt) {
+      return 'Unknown date'
+    }
+    const parsed = new Date(metadata.publishedAt)
+    return Number.isNaN(parsed.getTime())
+      ? 'Unknown date'
+      : parsed.toLocaleDateString()
+  })()
+
+  const viewsLabel =
+    metadata.views && metadata.views !== 'N/A'
+      ? `${metadata.views} views`
+      : 'Views unavailable'
+
+  const likesLabel =
+    metadata.likes && metadata.likes !== 'N/A'
+      ? `${metadata.likes} likes`
+      : 'Likes unavailable'
+
   return (
     <Card>
       <CardContent className="p-4">
@@ -202,7 +235,7 @@ export default function VideoPreview({
                 </div>
                 <div className="flex items-center">
                   <Calendar className="h-3 w-3 mr-1" />
-                  {new Date(metadata.publishedAt).toLocaleDateString()}
+                  {publishedDateLabel}
                 </div>
               </div>
 
@@ -210,11 +243,11 @@ export default function VideoPreview({
                 <div className="flex items-center space-x-3 text-xs text-muted-foreground">
                   <div className="flex items-center">
                     <Eye className="h-3 w-3 mr-1" />
-                    {metadata.views} views
+                    {viewsLabel}
                   </div>
                   <div className="flex items-center">
                     <ThumbsUp className="h-3 w-3 mr-1" />
-                    {metadata.likes}
+                    {likesLabel}
                   </div>
                 </div>
               )}
