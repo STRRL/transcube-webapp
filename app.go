@@ -26,6 +26,7 @@ type App struct {
 	logger        *slog.Logger
 	currentTaskID string
 	summarizer    *services.OpenRouterClient
+	afmSummarizer *services.AFMClient
 	settings      types.Settings
 	settingsStore *services.SettingsStore
 }
@@ -41,14 +42,15 @@ func NewApp() *App {
 	storage := services.NewStorage("")
 	ss, _ := services.NewSettingsStore()
 	return &App{
-		depChecker:  services.NewDependencyChecker(),
-		storage:     storage,
-		taskManager: services.NewTaskManager(storage),
-		downloader:  services.NewDownloader(storage),
-		yapRunner:   services.NewYapRunner(storage),
-		mediaServer: services.NewMediaServer(storage),
-		logger:      logger,
-		summarizer:  services.NewOpenRouterClient(),
+		depChecker:    services.NewDependencyChecker(),
+		storage:       storage,
+		taskManager:   services.NewTaskManager(storage),
+		downloader:    services.NewDownloader(storage),
+		yapRunner:     services.NewYapRunner(storage),
+		mediaServer:   services.NewMediaServer(storage),
+		logger:        logger,
+		summarizer:    services.NewOpenRouterClient(),
+		afmSummarizer: services.NewAFMClient(),
 		settings: types.Settings{
 			Workspace:       storage.GetWorkspace(),
 			SourceLang:      "en",
@@ -471,9 +473,24 @@ func (a *App) processTask(task *types.Task) {
 		return
 	}
 
-	// Only implement OpenRouter path for now (requested)
-	// For now, always try OpenRouter summarization as requested.
-	sumBytes, err := a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.SummaryLanguage, a.settings.Temperature, a.settings.MaxTokens)
+	summaryProvider := strings.ToLower(a.settings.APIProvider)
+	if summaryProvider == "" {
+		summaryProvider = "openrouter"
+	}
+	var (
+		sumBytes      []byte
+		providerLabel string
+	)
+	switch summaryProvider {
+	case "afm":
+		providerLabel = "AFM CLI"
+		sumBytes, err = a.afmSummarizer.SummarizeStructured(a.ctx, string(srtBytes), a.settings.SummaryLength, a.settings.SummaryLanguage)
+	case "openrouter", "gemini", "openai":
+		providerLabel = "OpenRouter"
+		fallthrough
+	default:
+		sumBytes, err = a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.SummaryLanguage, a.settings.Temperature, a.settings.MaxTokens)
+	}
 	summaryPath := fmt.Sprintf("%s/summary_structured.json", workDir)
 	if err != nil {
 		// Log but do not fail the entire task; save a minimal placeholder
@@ -489,8 +506,8 @@ func (a *App) processTask(task *types.Task) {
 			a.logger.Error("Failed to write summary", "taskId", task.ID, "error", werr)
 			_ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Failed to write summary: %v", werr))
 		} else {
-			_ = a.storage.SaveLog(workDir, "summarize", "Summary generated via OpenRouter")
-			a.logger.Info("Summarization complete", "taskId", task.ID, "path", summaryPath)
+			_ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Summary generated via %s", providerLabel))
+			a.logger.Info("Summarization complete", "taskId", task.ID, "path", summaryPath, "provider", providerLabel)
 		}
 	}
 

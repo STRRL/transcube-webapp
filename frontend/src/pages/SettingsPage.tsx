@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<types.Settings | null>({
     workspace: '~/Downloads/TransCube',
     sourceLang: 'en',
-    apiProvider: 'gemini',
+    apiProvider: 'openrouter',
     apiKey: '',
     summaryLength: 'medium',
     summaryLanguage: 'en',
@@ -165,6 +165,7 @@ export default function SettingsPage() {
                 <SelectItem value="gemini">Google Gemini 2.5 Flash</SelectItem>
                 <SelectItem value="openrouter">OpenRouter (Gemini 2.5 Flash)</SelectItem>
                 <SelectItem value="openai">OpenAI GPT-4</SelectItem>
+                <SelectItem value="afm">Apple Foundation Models (afm CLI)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -177,14 +178,19 @@ export default function SettingsPage() {
                 value={settings.apiKey}
                 onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
                 placeholder={
-                  settings.apiProvider === 'openrouter' 
+                  settings.apiProvider === 'afm'
+                    ? 'Not required for afm CLI'
+                    : settings.apiProvider === 'openrouter' 
                     ? 'sk-or-v1-... (OpenRouter key)'
                     : 'sk-...'
                 }
+                disabled={settings.apiProvider === 'afm'}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Your API key is stored securely and never transmitted except to the AI provider
+              {settings.apiProvider === 'afm'
+                ? 'The local afm CLI runs Apple Foundation Models without an API key. Ensure the tool is installed and available in PATH.'
+                : 'Your API key is stored securely and never transmitted except to the AI provider'}
             </p>
           </div>
 

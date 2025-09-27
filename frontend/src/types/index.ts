@@ -47,9 +47,10 @@ export interface DependencyStatus {
 export interface Settings {
   workspace: string
   sourceLang: string
-  apiProvider: 'gemini' | 'openai'
+  apiProvider: 'gemini' | 'openai' | 'openrouter' | 'afm'
   apiKey: string
   summaryLength: 'short' | 'medium' | 'long'
+  summaryLanguage?: 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'pt' | 'it'
   temperature: number
   maxTokens: number
 }

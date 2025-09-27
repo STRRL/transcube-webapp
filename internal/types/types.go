@@ -87,7 +87,7 @@ type DependencyStatus struct {
 type Settings struct {
 	Workspace       string  `json:"workspace"`
 	SourceLang      string  `json:"sourceLang"`
-	APIProvider     string  `json:"apiProvider"` // "gemini", "openai", "openrouter"
+	APIProvider     string  `json:"apiProvider"` // "gemini", "openai", "openrouter", "afm"
 	APIKey          string  `json:"apiKey"`
 	SummaryLength   string  `json:"summaryLength"`   // "short", "medium", "long"
 	SummaryLanguage string  `json:"summaryLanguage"` // Language for summaries (e.g., "en", "zh", "ja")
