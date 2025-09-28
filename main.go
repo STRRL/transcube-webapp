@@ -6,9 +6,12 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	macopts "github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -39,6 +42,18 @@ func main() {
 		mediaServer: app.mediaServer,
 	}
 
+	// Create application menu
+	appMenu := menu.NewMenu()
+
+	// Create File menu with Close window option
+	fileMenu := appMenu.AddSubmenu("File")
+	fileMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(cd *menu.CallbackData) {
+		// Quit the application when cmd+w (or ctrl+w on Windows/Linux) is pressed
+		if app.ctx != nil {
+			runtime.Quit(app.ctx)
+		}
+	})
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:  "transcube-webapp",
@@ -50,6 +65,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1},
 		OnStartup:        app.startup,
+		Menu:             appMenu,
 		Mac: &macopts.Options{
 			TitleBar: &macopts.TitleBar{
 				TitlebarAppearsTransparent: false,
