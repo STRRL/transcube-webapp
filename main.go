@@ -42,13 +42,25 @@ func main() {
 		mediaServer: app.mediaServer,
 	}
 
-	// Create application menu
+	// Create application menu by extending the defaults
 	appMenu := menu.NewMenu()
+	appMenu.Append(menu.AppMenu())
+	appMenu.Append(menu.EditMenu())
 
-	// Create File menu with Close window option
-	fileMenu := appMenu.AddSubmenu("File")
-	fileMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(cd *menu.CallbackData) {
-		// Quit the application when cmd+w (or ctrl+w on Windows/Linux) is pressed
+	// Custom window menu retains core controls and adds Cmd+W close shortcut
+	windowMenu := appMenu.AddSubmenu("Window")
+	windowMenu.AddText("Minimize", keys.CmdOrCtrl("m"), func(cd *menu.CallbackData) {
+		if app.ctx != nil {
+			runtime.WindowMinimise(app.ctx)
+		}
+	})
+	windowMenu.AddText("Zoom", nil, func(cd *menu.CallbackData) {
+		if app.ctx != nil {
+			runtime.WindowToggleMaximise(app.ctx)
+		}
+	})
+	windowMenu.AddSeparator()
+	windowMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(cd *menu.CallbackData) {
 		if app.ctx != nil {
 			runtime.Quit(app.ctx)
 		}
