@@ -130,17 +130,17 @@ export namespace types {
 		    return a;
 		}
 	}
-        export class VideoMetadata {
-            id: string;
-            title: string;
-            channel: string;
-            channelId: string;
-            duration: number;
-            publishedAt: string;
-            thumbnail: string;
-            viewCount: number;
-            likeCount: number;
-            description: string;
+	export class VideoMetadata {
+	    id: string;
+	    title: string;
+	    channel: string;
+	    channelId: string;
+	    duration: number;
+	    publishedAt: string;
+	    thumbnail: string;
+	    viewCount: number;
+	    likeCount: number;
+	    description: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new VideoMetadata(source);
@@ -151,32 +151,14 @@ export namespace types {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.channel = source["channel"];
-                this.channelId = source["channelId"];
-                this.duration = source["duration"];
-                this.publishedAt = source["publishedAt"];
-                this.thumbnail = source["thumbnail"];
-                this.viewCount = source["viewCount"];
-                this.likeCount = source["likeCount"];
-                this.description = source["description"];
-            }
-
-                convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+	        this.channelId = source["channelId"];
+	        this.duration = source["duration"];
+	        this.publishedAt = source["publishedAt"];
+	        this.thumbnail = source["thumbnail"];
+	        this.viewCount = source["viewCount"];
+	        this.likeCount = source["likeCount"];
+	        this.description = source["description"];
+	    }
 	}
 
 }

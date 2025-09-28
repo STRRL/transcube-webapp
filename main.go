@@ -49,7 +49,9 @@ func main() {
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(cd *menu.CallbackData) {
 		// Quit the application when cmd+w (or ctrl+w on Windows/Linux) is pressed
-		runtime.Quit(cd.Context)
+		if app.ctx != nil {
+			runtime.Quit(app.ctx)
+		}
 	})
 
 	// Create application with options
