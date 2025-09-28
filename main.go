@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/wailsapp/wails/v2"
@@ -11,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	macopts "github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -45,14 +46,23 @@ func main() {
 	// Create application menu
 	appMenu := menu.NewMenu()
 
+	// Add App menu on macOS (required for macOS apps)
+	if runtime.GOOS == "darwin" {
+		appMenu.Append(menu.AppMenu())
+	}
+
 	// Create File menu with Close window option
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Close Window", keys.CmdOrCtrl("w"), func(cd *menu.CallbackData) {
-		// Quit the application when cmd+w (or ctrl+w on Windows/Linux) is pressed
 		if app.ctx != nil {
-			runtime.Quit(app.ctx)
+			wailsruntime.Quit(app.ctx)
 		}
 	})
+
+	// Add Edit menu with standard copy/paste/cut operations on macOS
+	if runtime.GOOS == "darwin" {
+		appMenu.Append(menu.EditMenu())
+	}
 
 	// Create application with options
 	err := wails.Run(&options.App{
