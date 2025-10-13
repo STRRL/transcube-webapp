@@ -25,6 +25,17 @@ update_product_version() {
   fi
 }
 
+ORIGINAL_VERSION=""
+VERSION_MODIFIED=false
+
+restore_product_version() {
+  if [[ "$VERSION_MODIFIED" == "true" ]]; then
+    echo "Restoring version to $ORIGINAL_VERSION..."
+    update_product_version "$ORIGINAL_VERSION"
+    VERSION_MODIFIED=false
+  fi
+}
+
 # Check prerequisites
 echo "Checking prerequisites..."
 
@@ -57,12 +68,34 @@ fi
 echo "All prerequisites satisfied."
 echo ""
 
+# Load signing credentials early and fail fast when missing (macOS only).
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [[ -f ".env" ]]; then
+        # shellcheck disable=SC1091
+        source .env
+    fi
+
+    missing_env=false
+    for var in APPLE_DEVELOPER_IDENTITY APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+        if [[ -z "${!var}" ]]; then
+            echo "Error: $var is not set. Provide it via environment variable or .env file."
+            missing_env=true
+        fi
+    done
+
+    if [[ "$missing_env" == "true" ]]; then
+        echo "Hint: Required signing variables are APPLE_DEVELOPER_IDENTITY, APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID."
+        exit 1
+    fi
+fi
+
 # Preserve the original product version so we can restore it later.
 ORIGINAL_VERSION=$(jq -r '.info.productVersion' wails.json)
 if [[ -z "$ORIGINAL_VERSION" || "$ORIGINAL_VERSION" == "null" ]]; then
     echo "Error: Unable to read info.productVersion from wails.json."
     exit 1
 fi
+trap restore_product_version EXIT
 
 # Get git tag or use latest commit
 GIT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
@@ -79,6 +112,7 @@ NOTARIZE_ENABLED=false
 
 # Update version in wails.json
 update_product_version "$VERSION"
+VERSION_MODIFIED=true
 
 # Build
 echo "Building version $VERSION..."
@@ -88,9 +122,8 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 wails build -clean
 
-# Restore product version to the value found before the build ran
-echo "Restoring version to $ORIGINAL_VERSION..."
-update_product_version "$ORIGINAL_VERSION"
+# Ensure we leave wails.json as we found it before exiting
+restore_product_version
 
 # Rename app on macOS
 if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/transcube-webapp.app" ]; then
@@ -104,23 +137,18 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ -d "build/bin/TransCube.app" ] && [ -f "bui
     cp build/appicon.icns build/bin/TransCube.app/Contents/Resources/iconfile.icns
 fi
 
-# Sign and notarize (macOS only)
-if [[ "$OSTYPE" == "darwin"* ]] && [ -f ".env" ]; then
-    source .env
-    
-    if [[ -n "$APPLE_DEVELOPER_IDENTITY" ]]; then
-        SIGNING_ENABLED=true
-        echo "Signing..."
-        codesign --deep --force --verify --verbose \
-            --sign "$APPLE_DEVELOPER_IDENTITY" \
-            --options runtime \
-            --entitlements build/darwin/entitlements.plist \
-            --timestamp \
-            build/bin/TransCube.app
-        if [[ -n "$APPLE_ID" ]] && [[ -n "$APPLE_APP_PASSWORD" ]] && [[ -n "$APPLE_TEAM_ID" ]]; then
-            NOTARIZE_ENABLED=true
-        fi
-    fi
+# Sign and notarize (macOS only).
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    SIGNING_ENABLED=true
+    NOTARIZE_ENABLED=true
+
+    echo "Signing..."
+    codesign --deep --force --verify --verbose \
+        --sign "$APPLE_DEVELOPER_IDENTITY" \
+        --options runtime \
+        --entitlements build/darwin/entitlements.plist \
+        --timestamp \
+        build/bin/TransCube.app
 fi
 
 # Create DMG
