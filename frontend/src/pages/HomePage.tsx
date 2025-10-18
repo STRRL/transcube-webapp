@@ -30,12 +30,24 @@ export default function HomePage() {
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTasks, setActiveTasks] = useState<any[]>([])
 
+  const isActiveStatus = useCallback(
+    (status: string | undefined) =>
+      status === 'pending' ||
+      status === 'downloading' ||
+      status === 'transcribing' ||
+      status === 'translating' ||
+      status === 'summarizing',
+    []
+  )
+
   const loadTasks = useCallback(async () => {
     try {
       const tasks = await GetAllTasks()
       console.log('All tasks loaded:', tasks)
-      // Filter only completed tasks - handle null case
-      const completed = (tasks || []).filter(task => task.status === 'done')
+      // Filter tasks that already reached a terminal state
+      const completed = (tasks || []).filter(
+        (task) => task.status === 'done' || task.status === 'failed'
+      )
       // Sort by createdAt in descending order (newest first)
       completed.sort((a, b) => {
         const dateA = new Date(a.createdAt).getTime()
@@ -54,12 +66,12 @@ export default function HomePage() {
   const loadActiveTasks = useCallback(async () => {
     try {
       const tasks = await ListActiveTasks()
-      const running = (tasks || []).filter(task => task.status !== 'done')
+      const running = (tasks || []).filter((task) => isActiveStatus(task.status))
       setActiveTasks(running)
     } catch (err) {
       console.error('Failed to refresh active tasks:', err)
     }
-  }, [])
+  }, [isActiveStatus])
 
   useEffect(() => {
     loadTasks()
@@ -85,14 +97,15 @@ export default function HomePage() {
   }, [location])
 
   useEffect(() => {
+    const interval = activeTasks.length > 0 ? 1500 : 10000
     const intervalId = setInterval(() => {
       loadActiveTasks()
-    }, 1500)
+    }, interval)
 
     return () => {
       clearInterval(intervalId)
     }
-  }, [loadActiveTasks])
+  }, [activeTasks.length, loadActiveTasks])
 
   const confirmDelete = async () => {
     if (!videoToDelete) return
@@ -120,8 +133,8 @@ export default function HomePage() {
   const combinedTasks = useMemo(() => {
     const tasks = [...activeTasks, ...processedVideos]
     return tasks.sort((a, b) => {
-      const aActive = a.status !== 'done'
-      const bActive = b.status !== 'done'
+      const aActive = isActiveStatus(a.status)
+      const bActive = isActiveStatus(b.status)
       if (aActive !== bActive) {
         return aActive ? -1 : 1
       }
@@ -129,7 +142,7 @@ export default function HomePage() {
       const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime()
       return dateB - dateA
     })
-  }, [activeTasks, processedVideos])
+  }, [activeTasks, processedVideos, isActiveStatus])
 
   const filteredTasks = combinedTasks.filter(task => {
     if (selectedChannel && task.channel !== selectedChannel) {

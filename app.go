@@ -306,18 +306,23 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 		return nil, err
 	}
 
-	a.logger.Info("Download stage started", "taskId", taskID, "url", task.URL)
-
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, 10); err != nil {
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusDownloading,
+		10,
+		types.TaskStatusPending,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Download stage rejected", "taskId", taskID, "error", err)
 		return nil, err
 	}
 
+	a.logger.Info("Download stage started", "taskId", taskID, "url", task.URL)
+
 	info, err := a.downloader.GetVideoInfo(task.URL)
 	if err != nil {
-		a.logger.Error("Failed to get video info", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to get video info: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to get video info", "url", task.URL)
 		return nil, err
 	}
 
@@ -325,10 +330,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
 	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, info.Thumbnail); err != nil {
-		a.logger.Error("Failed to update metadata", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to update metadata: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to update metadata")
 		return nil, err
 	}
 
@@ -339,18 +341,12 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 	workDir := updatedTask.WorkDir
 	if workDir == "" {
 		err := fmt.Errorf("work directory not set for task %s", taskID)
-		a.logger.Error("Work directory missing", "taskId", taskID)
-		if setErr := a.taskManager.SetTaskError(taskID, err.Error()); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Work directory missing after metadata update")
 		return nil, err
 	}
 
 	if err := os.MkdirAll(workDir, 0755); err != nil {
-		a.logger.Error("Failed to create work directory", "taskId", taskID, "path", workDir, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to create work directory: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to create work directory", "path", workDir)
 		return nil, err
 	}
 
@@ -359,10 +355,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 	}
 
 	if err := a.downloader.DownloadVideo(task.URL, workDir); err != nil {
-		a.logger.Error("Failed to download video", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to download video: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to download video", "url", task.URL)
 		return nil, err
 	}
 
@@ -376,21 +369,15 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 		if _, altErr := os.Stat(alt); altErr == nil {
 			videoPath = alt
 		} else {
-			a.logger.Error("No downloaded video found for audio extraction", "taskId", taskID)
 			err := fmt.Errorf("video file missing after download")
-			if setErr := a.taskManager.SetTaskError(taskID, err.Error()); setErr != nil {
-				a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-			}
+			a.recordTaskError(taskID, err, "No downloaded video found for audio extraction")
 			return nil, err
 		}
 	}
 
 	audioPath := fmt.Sprintf("%s/audio.aac", workDir)
 	if err := a.downloader.ExtractAudio(videoPath, audioPath); err != nil {
-		a.logger.Error("Failed to extract audio", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to extract audio: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to extract audio")
 		return nil, err
 	}
 
@@ -413,26 +400,44 @@ func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
 		return nil, fmt.Errorf("task %s has no working directory", taskID)
 	}
 
+	switch task.Status {
+	case types.TaskStatusTranscribing:
+		return nil, fmt.Errorf("transcription already in progress")
+	case types.TaskStatusPending:
+		return nil, fmt.Errorf("download stage must complete before transcription")
+	case types.TaskStatusSummarizing:
+		return nil, fmt.Errorf("cannot transcribe while summarization is running")
+	}
+
+	if task.Progress < 60 {
+		return nil, fmt.Errorf("download stage must complete before transcription")
+	}
+
 	audioPath := fmt.Sprintf("%s/audio.aac", task.WorkDir)
 	if _, err := os.Stat(audioPath); err != nil {
-		a.logger.Error("Audio file missing for transcription", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Audio file missing for transcription: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("download stage must complete before transcription")
 		}
+		a.recordTaskError(taskID, err, "Failed to access audio file for transcription")
+		return nil, err
+	}
+
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusTranscribing,
+		60,
+		types.TaskStatusDownloading,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Transcription stage rejected", "taskId", taskID, "error", err)
 		return nil, err
 	}
 
 	a.logger.Info("Transcription stage started", "taskId", taskID, "lang", task.SourceLang)
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusTranscribing, 60); err != nil {
-		return nil, err
-	}
-
 	if err := a.yapRunner.Transcribe(audioPath, task.WorkDir, task.SourceLang); err != nil {
-		a.logger.Error("Failed to transcribe", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to transcribe: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
-		}
+		a.recordTaskError(taskID, err, "Failed to transcribe", "lang", task.SourceLang)
 		return nil, err
 	}
 
@@ -455,21 +460,40 @@ func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
 		return nil, fmt.Errorf("task %s has no working directory", taskID)
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusSummarizing, 85); err != nil {
-		return nil, err
+	switch task.Status {
+	case types.TaskStatusSummarizing:
+		return nil, fmt.Errorf("summarization already in progress")
+	case types.TaskStatusPending, types.TaskStatusDownloading:
+		return nil, fmt.Errorf("run download and transcription stages before summarizing")
+	case types.TaskStatusTranscribing:
+		if task.Progress < 80 {
+			return nil, fmt.Errorf("transcription stage must complete before summarization")
+		}
 	}
-
-	a.logger.Info("Summarization stage started", "taskId", taskID, "provider", a.settings.APIProvider)
 
 	srtPath := fmt.Sprintf("%s/subs_%s.srt", task.WorkDir, task.SourceLang)
 	srtBytes, err := os.ReadFile(srtPath)
 	if err != nil {
-		a.logger.Error("Failed to read transcript for summary", "taskId", taskID, "error", err)
-		if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("Failed to read transcript for summary: %v", err)); setErr != nil {
-			a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("transcription stage must complete before summarization")
 		}
+		a.recordTaskError(taskID, err, "Failed to read transcript for summary")
 		return nil, err
 	}
+
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusSummarizing,
+		85,
+		types.TaskStatusTranscribing,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Summarization stage rejected", "taskId", taskID, "error", err)
+		return nil, err
+	}
+
+	a.logger.Info("Summarization stage started", "taskId", taskID, "provider", a.settings.APIProvider)
 
 	sumBytes, summarizeErr := a.summarizer.SummarizeStructured(
 		a.ctx,
@@ -666,6 +690,19 @@ func (a *App) emitReloadEvent() {
 		return
 	}
 	runtime.EventsEmit(a.ctx, "reload-videos")
+}
+
+func (a *App) recordTaskError(taskID string, err error, message string, attrs ...any) {
+	if err == nil {
+		return
+	}
+
+	fields := append([]any{"taskId", taskID, "error", err}, attrs...)
+	a.logger.Error(message, fields...)
+
+	if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("%s: %v", message, err)); setErr != nil {
+		a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
+	}
 }
 
 // processTask handles the actual task processing

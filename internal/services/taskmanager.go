@@ -28,6 +28,12 @@ func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, e
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
+	for _, existing := range tm.tasks {
+		if existing.URL == url && tm.isTaskRunning(existing.Status) {
+			return nil, fmt.Errorf("a task is already running for this url: %s", url)
+		}
+	}
+
 	task := &types.Task{
 		ID:         uuid.New().String(),
 		URL:        url,
@@ -101,10 +107,50 @@ func (tm *TaskManager) UpdateTaskStatus(taskID string, status types.TaskStatus, 
 	if status == types.TaskStatusDone || status == types.TaskStatusFailed {
 		now := time.Now()
 		task.CompletedAt = &now
+		go tm.scheduleCleanup(taskID)
 	}
 
 	if task.WorkDir != "" {
 		return tm.storage.SaveMetadata(task)
+	}
+
+	return nil
+}
+
+// BeginStage transitions the task into a new processing stage if the current
+// status is one of the allowed states. It is used to guard manual operations
+// from running concurrently or out of order.
+func (tm *TaskManager) BeginStage(taskID string, stage types.TaskStatus, progress int, allowedStatuses ...types.TaskStatus) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+
+	isAllowed := false
+	for _, allowed := range allowedStatuses {
+		if task.Status == allowed {
+			isAllowed = true
+			break
+		}
+	}
+
+	if !isAllowed {
+		return fmt.Errorf("cannot start %s stage while task is %s", stage, task.Status)
+	}
+
+	task.Status = stage
+	task.Progress = progress
+	task.Error = ""
+	task.CompletedAt = nil
+	task.UpdatedAt = time.Now()
+
+	if task.WorkDir != "" {
+		if err := tm.storage.SaveMetadata(task); err != nil {
+			return fmt.Errorf("failed to persist task metadata: %w", err)
+		}
 	}
 
 	return nil
@@ -127,7 +173,9 @@ func (tm *TaskManager) UpdateTaskMetadata(taskID, videoID, title, channel, durat
 	task.Thumbnail = thumbnail
 	task.UpdatedAt = time.Now()
 
-	task.WorkDir = tm.storage.GetTaskDir(title, videoID)
+	if task.WorkDir == "" {
+		task.WorkDir = tm.storage.GetTaskDir(title, videoID, task.ID)
+	}
 
 	return nil
 }
@@ -169,6 +217,7 @@ func (tm *TaskManager) SetTaskError(taskID string, err string) error {
 	task.UpdatedAt = time.Now()
 	now := time.Now()
 	task.CompletedAt = &now
+	go tm.scheduleCleanup(taskID)
 
 	if task.WorkDir != "" {
 		return tm.storage.SaveMetadata(task)
@@ -218,6 +267,22 @@ func (tm *TaskManager) isTaskRunning(status types.TaskStatus) bool {
 	default:
 		return false
 	}
+}
+
+func (tm *TaskManager) scheduleCleanup(taskID string) {
+	time.AfterFunc(2*time.Minute, func() {
+		tm.mu.Lock()
+		defer tm.mu.Unlock()
+
+		task, ok := tm.tasks[taskID]
+		if !ok {
+			return
+		}
+
+		if task.Status == types.TaskStatusDone || task.Status == types.TaskStatusFailed {
+			delete(tm.tasks, taskID)
+		}
+	})
 }
 
 func cloneTask(task *types.Task) *types.Task {

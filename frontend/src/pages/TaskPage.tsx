@@ -4,15 +4,18 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Play, 
+import {
+  Play,
   ChevronLeft,
   Clock,
   FileText,
   Copy,
   Check,
   RefreshCcw,
-  Loader2
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X
 } from 'lucide-react'
 import BilingualSubtitle from '@/components/BilingualSubtitle'
 import VideoPlayer, { VideoPlayerHandle } from '@/components/VideoPlayer'
@@ -51,9 +54,11 @@ export default function TaskPage() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isSummarizing, setIsSummarizing] = useState(false)
-  const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionHistory, setActionHistory] = useState<
+    { id: number; type: 'success' | 'error'; message: string; timestamp: number }[]
+  >([])
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
+  const feedbackId = useRef(0)
 
   const isBusy = isUpdatingLanguage || isDownloading || isTranscribing || isSummarizing
 
@@ -183,24 +188,37 @@ export default function TaskPage() {
     }
   }
 
+  const pushFeedback = (type: 'success' | 'error', message: string) => {
+    feedbackId.current += 1
+    const entry = { id: feedbackId.current, type, message, timestamp: Date.now() }
+    setActionHistory((prev) => [entry, ...prev].slice(0, 4))
+  }
+
+  const dismissFeedback = (id: number) => {
+    setActionHistory((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const formatFeedbackTime = (value: number) => {
+    const date = new Date(value)
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+
   const handleLanguageChange = async (lang: string) => {
     if (!taskId) return
     const previousLang = selectedLang
 
     setSelectedLang(lang)
-    setActionError(null)
-    setActionMessage(null)
     setIsUpdatingLanguage(true)
 
     try {
       await UpdateTaskSourceLanguage(taskId, lang)
       await loadTask()
-      setActionMessage('Source language updated. Regenerate transcript to apply the change.')
+      pushFeedback('success', 'Source language updated. Regenerate transcript to apply the change.')
     } catch (err) {
       console.error('Failed to update source language:', err)
       setSelectedLang(previousLang)
       const message = err instanceof Error ? err.message : 'Failed to update source language'
-      setActionError(message)
+      pushFeedback('error', message)
     } finally {
       setIsUpdatingLanguage(false)
     }
@@ -209,18 +227,16 @@ export default function TaskPage() {
   const handleRedownload = async () => {
     if (!taskId) return
 
-    setActionError(null)
-    setActionMessage(null)
     setIsDownloading(true)
 
     try {
       await DownloadTask(taskId)
       await loadTask()
-      setActionMessage('Media files refreshed successfully.')
+      pushFeedback('success', 'Media files refreshed successfully.')
     } catch (err) {
       console.error('Failed to redownload media:', err)
       const message = err instanceof Error ? err.message : 'Failed to redownload media'
-      setActionError(message)
+      pushFeedback('error', message)
     } finally {
       setIsDownloading(false)
     }
@@ -229,19 +245,17 @@ export default function TaskPage() {
   const handleRetranscribe = async () => {
     if (!taskId) return
 
-    setActionError(null)
-    setActionMessage(null)
     setIsTranscribing(true)
 
     try {
       await TranscribeTask(taskId)
       await loadTask()
       setSummary(null)
-      setActionMessage('Transcript regenerated. Run summary again to refresh insights.')
+      pushFeedback('success', 'Transcript regenerated. Run summary again to refresh insights.')
     } catch (err) {
       console.error('Failed to retranscribe:', err)
       const message = err instanceof Error ? err.message : 'Failed to regenerate transcript'
-      setActionError(message)
+      pushFeedback('error', message)
     } finally {
       setIsTranscribing(false)
     }
@@ -250,18 +264,16 @@ export default function TaskPage() {
   const handleResummarize = async () => {
     if (!taskId) return
 
-    setActionError(null)
-    setActionMessage(null)
     setIsSummarizing(true)
 
     try {
       await SummarizeTask(taskId)
       await loadTask()
-      setActionMessage('Summary regenerated successfully.')
+      pushFeedback('success', 'Summary regenerated successfully.')
     } catch (err) {
       console.error('Failed to regenerate summary:', err)
       const message = err instanceof Error ? err.message : 'Failed to regenerate summary'
-      setActionError(message)
+      pushFeedback('error', message)
     } finally {
       setIsSummarizing(false)
     }
@@ -500,11 +512,44 @@ export default function TaskPage() {
                           Regenerate Summary
                         </Button>
                       </div>
-                      {actionMessage && (
-                        <p className="text-sm text-green-600">{actionMessage}</p>
-                      )}
-                      {actionError && (
-                        <p className="text-sm text-destructive">{actionError}</p>
+                      {actionHistory.length > 0 && (
+                        <div className="space-y-2">
+                          {actionHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${
+                                entry.type === 'error'
+                                  ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                                  : 'border-emerald-400/40 bg-emerald-400/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              }`}
+                              role="alert"
+                            >
+                              {entry.type === 'error' ? (
+                                <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
+                              ) : (
+                                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none" />
+                              )}
+                              <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium">
+                                  {entry.type === 'error' ? 'Action failed' : 'Action completed'}
+                                </p>
+                                <p className="text-sm leading-snug">{entry.message}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatFeedbackTime(entry.timestamp)}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={() => dismissFeedback(entry.id)}
+                                aria-label="Dismiss feedback"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>

@@ -27,10 +27,26 @@ func (s *Storage) EnsureWorkspace() error {
 	return os.MkdirAll(s.workspace, 0755)
 }
 
-// GetTaskDir returns the directory path for a specific task
-func (s *Storage) GetTaskDir(title string, videoID string) string {
+// GetTaskDir returns the directory path for a specific task. The taskID ensures
+// concurrent tasks processing the same video do not collide on the filesystem.
+func (s *Storage) GetTaskDir(title string, videoID string, taskID string) string {
 	sanitized := s.sanitizeTitle(title)
-	dirname := fmt.Sprintf("%s__%s", sanitized, videoID)
+	if taskID == "" {
+		dirname := fmt.Sprintf("%s__%s", sanitized, videoID)
+		return filepath.Join(s.workspace, dirname)
+	}
+
+	suffix := taskID
+	if len(taskID) > 8 {
+		suffix = taskID[:8]
+	}
+
+	if videoID == "" {
+		dirname := fmt.Sprintf("%s__%s", sanitized, suffix)
+		return filepath.Join(s.workspace, dirname)
+	}
+
+	dirname := fmt.Sprintf("%s__%s__%s", sanitized, videoID, suffix)
 	return filepath.Join(s.workspace, dirname)
 }
 
