@@ -2,35 +2,32 @@ package services
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+
 	"transcube-webapp/internal/types"
 )
 
 type TaskManager struct {
-	mu          sync.Mutex
-	currentTask *types.Task
-	storage     *Storage
+	mu      sync.RWMutex
+	tasks   map[string]*types.Task
+	storage *Storage
 }
 
 func NewTaskManager(storage *Storage) *TaskManager {
 	return &TaskManager{
+		tasks:   make(map[string]*types.Task),
 		storage: storage,
 	}
 }
 
-// CreateTask creates a new task if no task is currently running
+// CreateTask creates a new task and tracks it in memory
 func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	// Check if a task is already running
-	if tm.currentTask != nil && tm.isTaskRunning(tm.currentTask.Status) {
-		return nil, fmt.Errorf("a task is already running")
-	}
-
-	// Create new task
 	task := &types.Task{
 		ID:         uuid.New().String(),
 		URL:        url,
@@ -41,121 +38,135 @@ func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, e
 		UpdatedAt:  time.Now(),
 	}
 
-	tm.currentTask = task
-	return task, nil
+	tm.tasks[task.ID] = task
+	return cloneTask(task), nil
 }
 
-// GetCurrentTask returns the current task
-func (tm *TaskManager) GetCurrentTask() *types.Task {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
+// GetTask returns a copy of the task with the given ID
+func (tm *TaskManager) GetTask(taskID string) (*types.Task, error) {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 
-	return tm.currentTask
-}
-
-// UpdateTaskStatus updates the status and progress of the current task
-func (tm *TaskManager) UpdateTaskStatus(status types.TaskStatus, progress int) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	if tm.currentTask == nil {
-		return fmt.Errorf("no current task")
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return nil, fmt.Errorf("task %s not found", taskID)
 	}
 
-	tm.currentTask.Status = status
-	tm.currentTask.Progress = progress
-	tm.currentTask.UpdatedAt = time.Now()
+	return cloneTask(task), nil
+}
+
+// ListTasks returns copies of all tracked tasks
+func (tm *TaskManager) ListTasks() []*types.Task {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	result := make([]*types.Task, 0, len(tm.tasks))
+	for _, task := range tm.tasks {
+		result = append(result, cloneTask(task))
+	}
+	return result
+}
+
+// UpdateTaskStatus updates the status and progress for the given task
+func (tm *TaskManager) UpdateTaskStatus(taskID string, status types.TaskStatus, progress int) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+
+	task.Status = status
+	task.Progress = progress
+	task.UpdatedAt = time.Now()
 
 	if status == types.TaskStatusDone || status == types.TaskStatusFailed {
 		now := time.Now()
-		tm.currentTask.CompletedAt = &now
+		task.CompletedAt = &now
 	}
 
-	// Save metadata
-	if tm.currentTask.WorkDir != "" {
-		return tm.storage.SaveMetadata(tm.currentTask)
+	if task.WorkDir != "" {
+		return tm.storage.SaveMetadata(task)
 	}
 
 	return nil
 }
 
-// UpdateTaskMetadata updates task metadata
-func (tm *TaskManager) UpdateTaskMetadata(videoID, title, channel, duration, thumbnail string) error {
+// UpdateTaskMetadata updates the metadata for the given task
+func (tm *TaskManager) UpdateTaskMetadata(taskID, videoID, title, channel, duration, thumbnail string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	if tm.currentTask == nil {
-		return fmt.Errorf("no current task")
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
 	}
 
-	tm.currentTask.VideoID = videoID
-	tm.currentTask.Title = title
-	tm.currentTask.Channel = channel
-	tm.currentTask.Duration = duration
-	tm.currentTask.Thumbnail = thumbnail
-	tm.currentTask.UpdatedAt = time.Now()
+	task.VideoID = videoID
+	task.Title = title
+	task.Channel = channel
+	task.Duration = duration
+	task.Thumbnail = thumbnail
+	task.UpdatedAt = time.Now()
 
-	// Set work directory path (but don't create it yet)
-	workDir := tm.storage.GetTaskDir(title, videoID)
-	tm.currentTask.WorkDir = workDir
+	task.WorkDir = tm.storage.GetTaskDir(title, videoID)
 
-	// Don't save metadata here - directory doesn't exist yet
-	// Metadata will be saved after directory is created in processTask
 	return nil
 }
 
-// SetTaskError sets an error message for the current task
-func (tm *TaskManager) SetTaskError(err string) error {
+// SetTaskError marks the task as failed with the provided error message
+func (tm *TaskManager) SetTaskError(taskID string, err string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	if tm.currentTask == nil {
-		return fmt.Errorf("no current task")
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return fmt.Errorf("task %s not found", taskID)
 	}
 
-	tm.currentTask.Status = types.TaskStatusFailed
-	tm.currentTask.Error = err
-	tm.currentTask.UpdatedAt = time.Now()
+	task.Status = types.TaskStatusFailed
+	task.Error = err
+	task.UpdatedAt = time.Now()
 	now := time.Now()
-	tm.currentTask.CompletedAt = &now
+	task.CompletedAt = &now
 
-	// Save metadata
-	if tm.currentTask.WorkDir != "" {
-		return tm.storage.SaveMetadata(tm.currentTask)
+	if task.WorkDir != "" {
+		return tm.storage.SaveMetadata(task)
 	}
 
 	return nil
 }
 
-// RetryTask retries the current task if it failed
-func (tm *TaskManager) RetryTask() error {
+// RetryTask resets task state if it previously failed
+func (tm *TaskManager) RetryTask(taskID string) (*types.Task, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	if tm.currentTask == nil {
-		return fmt.Errorf("no task to retry")
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return nil, fmt.Errorf("task %s not found", taskID)
 	}
 
-	if tm.currentTask.Status != types.TaskStatusFailed {
-		return fmt.Errorf("can only retry failed tasks")
+	if task.Status != types.TaskStatusFailed {
+		return nil, fmt.Errorf("can only retry failed tasks")
 	}
 
-	// Reset task status
-	tm.currentTask.Status = types.TaskStatusPending
-	tm.currentTask.Progress = 0
-	tm.currentTask.Error = ""
-	tm.currentTask.CompletedAt = nil
-	tm.currentTask.UpdatedAt = time.Now()
+	task.Status = types.TaskStatusPending
+	task.Progress = 0
+	task.Error = ""
+	task.CompletedAt = nil
+	task.UpdatedAt = time.Now()
 
-	return nil
+	return cloneTask(task), nil
 }
 
-// ClearTask clears the current task (for cleanup after completion)
-func (tm *TaskManager) ClearTask() {
+// ClearTask removes the task from the in-memory map
+func (tm *TaskManager) ClearTask(taskID string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	tm.currentTask = nil
+	delete(tm.tasks, taskID)
 }
 
 // isTaskRunning checks if a task status indicates it's still running
@@ -168,4 +179,12 @@ func (tm *TaskManager) isTaskRunning(status types.TaskStatus) bool {
 	default:
 		return false
 	}
+}
+
+func cloneTask(task *types.Task) *types.Task {
+	if task == nil {
+		return nil
+	}
+	copy := *task
+	return &copy
 }

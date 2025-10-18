@@ -7,20 +7,28 @@ export function CheckDependencies():Promise<types.DependencyStatus>;
 
 export function DeleteTask(arg1:string):Promise<void>;
 
-export function GetAllTasks():Promise<Array<types.Task>>;
+export function DownloadTask(arg1:string):Promise<types.Task>;
 
-export function GetCurrentTask():Promise<types.Task>;
+export function GetAllTasks():Promise<Array<types.Task>>;
 
 export function GetDebugInfo():Promise<Record<string, string>>;
 
 export function GetSettings():Promise<types.Settings>;
 
+export function GetTask(arg1:string):Promise<types.Task>;
+
 export function GetTaskSubtitles(arg1:string):Promise<Array<main.SubtitleEntry>>;
+
+export function ListActiveTasks():Promise<Array<types.Task>>;
 
 export function ParseVideoUrl(arg1:string):Promise<types.VideoMetadata>;
 
 export function RetryTask(arg1:string):Promise<types.Task>;
 
 export function StartTranscription(arg1:string,arg2:string):Promise<types.Task>;
+
+export function SummarizeTask(arg1:string):Promise<types.Task>;
+
+export function TranscribeTask(arg1:string):Promise<types.Task>;
 
 export function UpdateSettings(arg1:types.Settings):Promise<types.Settings>;
