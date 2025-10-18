@@ -7,7 +7,7 @@ import { AlertCircle, ChevronLeft, Download } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
-import { CheckDependencies, StartTranscription, GetCurrentTask } from '../../wailsjs/go/main/App'
+import { CheckDependencies, StartTranscription, GetTask } from '../../wailsjs/go/main/App'
 
 export default function NewTranscriptionPage() {
   const navigate = useNavigate()
@@ -51,7 +51,10 @@ export default function NewTranscriptionPage() {
 
   const pollTaskStatus = async () => {
     try {
-      const task = await GetCurrentTask()
+      if (!currentTaskId) {
+        return
+      }
+      const task = await GetTask(currentTaskId)
       if (task) {
         // Map backend status to frontend TaskStage
         const stageMap: Record<string, TaskStage> = {
@@ -73,9 +76,12 @@ export default function NewTranscriptionPage() {
           setIsProcessing(false)
           setError(task.error || 'Task failed')
         }
+      } else {
+        setIsProcessing(false)
       }
     } catch (err) {
       console.error('Failed to get task status:', err)
+      setIsProcessing(false)
     }
   }
 

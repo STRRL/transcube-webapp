@@ -10,12 +10,12 @@ export function DeleteTask(arg1) {
   return window['go']['main']['App']['DeleteTask'](arg1);
 }
 
-export function GetAllTasks() {
-  return window['go']['main']['App']['GetAllTasks']();
+export function DownloadTask(arg1) {
+  return window['go']['main']['App']['DownloadTask'](arg1);
 }
 
-export function GetCurrentTask() {
-  return window['go']['main']['App']['GetCurrentTask']();
+export function GetAllTasks() {
+  return window['go']['main']['App']['GetAllTasks']();
 }
 
 export function GetDebugInfo() {
@@ -26,8 +26,16 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetTask(arg1) {
+  return window['go']['main']['App']['GetTask'](arg1);
+}
+
 export function GetTaskSubtitles(arg1) {
   return window['go']['main']['App']['GetTaskSubtitles'](arg1);
+}
+
+export function ListActiveTasks() {
+  return window['go']['main']['App']['ListActiveTasks']();
 }
 
 export function ParseVideoUrl(arg1) {
@@ -42,6 +50,18 @@ export function StartTranscription(arg1, arg2) {
   return window['go']['main']['App']['StartTranscription'](arg1, arg2);
 }
 
+export function SummarizeTask(arg1) {
+  return window['go']['main']['App']['SummarizeTask'](arg1);
+}
+
+export function TranscribeTask(arg1) {
+  return window['go']['main']['App']['TranscribeTask'](arg1);
+}
+
 export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
+}
+
+export function UpdateTaskSourceLanguage(arg1, arg2) {
+  return window['go']['main']['App']['UpdateTaskSourceLanguage'](arg1, arg2);
 }

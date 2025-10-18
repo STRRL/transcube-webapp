@@ -14,6 +14,19 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// Progress value constants for task stages
+const (
+	ProgressDownloadStart      = 10
+	ProgressMetadataFetched    = 30
+	ProgressVideoDownloaded    = 45
+	ProgressAudioExtracted     = 60
+	ProgressTranscribeStart    = 60
+	ProgressTranscribeComplete = 80
+	ProgressSummarizeStart     = 85
+	ProgressSummarizeComplete  = 95
+	ProgressTaskComplete       = 100
+)
+
 // App struct
 type App struct {
 	ctx           context.Context
@@ -24,7 +37,6 @@ type App struct {
 	yapRunner     *services.YapRunner
 	mediaServer   *services.MediaServer
 	logger        *slog.Logger
-	currentTaskID string
 	summarizer    *services.OpenRouterClient
 	settings      types.Settings
 	settingsStore *services.SettingsStore
@@ -192,43 +204,401 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, error) {
 	a.logger.Info("Starting new transcription task", "url", url, "sourceLang", sourceLang)
 
+	info, err := a.downloader.GetVideoInfo(url)
+	if err != nil {
+		a.logger.Error("Failed to fetch metadata before creating task", "url", url, "error", err)
+		return nil, err
+	}
+	if info.ID == "" {
+		return nil, fmt.Errorf("video ID is missing from metadata")
+	}
+
+	duration := time.Duration(info.Duration) * time.Second
+	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
+
 	// Create new task
-	task, err := a.taskManager.CreateTask(url, sourceLang)
+	task, err := a.taskManager.CreateTask(
+		url,
+		sourceLang,
+		info.ID,
+		info.Title,
+		info.Channel,
+		durationStr,
+		info.Thumbnail,
+	)
 	if err != nil {
 		a.logger.Error("Failed to create task", "error", err)
 		return nil, err
 	}
 
 	a.logger.Info("Task created", "taskId", task.ID)
-	a.currentTaskID = task.ID
 
 	// Start processing in background
-	go a.processTask(task)
+	go a.processTask(task.ID)
 
 	return task, nil
 }
 
-// GetCurrentTask returns the current running task
-func (a *App) GetCurrentTask() *types.Task {
-	return a.taskManager.GetCurrentTask()
-}
-
-// RetryTask retries a failed task
-func (a *App) RetryTask(taskID string) (*types.Task, error) {
-	task := a.taskManager.GetCurrentTask()
-	if task == nil || task.ID != taskID {
-		return nil, fmt.Errorf("task not found")
-	}
-
-	err := a.taskManager.RetryTask()
+func (a *App) loadTaskFromDisk(taskID string) (*types.Task, error) {
+	tasks, err := a.storage.GetAllTasks()
 	if err != nil {
 		return nil, err
 	}
 
-	// Start processing in background
-	go a.processTask(task)
+	for _, task := range tasks {
+		if task.ID == taskID {
+			return task, nil
+		}
+	}
+
+	return nil, fmt.Errorf("task %s not found", taskID)
+}
+
+// GetTask returns the task by ID, loading it from persisted metadata
+func (a *App) GetTask(taskID string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+
+	return a.loadTaskFromDisk(taskID)
+}
+
+// ListActiveTasks returns all tasks currently managed in memory
+func (a *App) ListActiveTasks() []*types.Task {
+	return a.taskManager.ListTasks()
+}
+
+// ensureTaskLoaded guarantees the task is present in the in-memory manager,
+// reloading it from disk metadata if necessary.
+func (a *App) ensureTaskLoaded(taskID string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+
+	task, err := a.loadTaskFromDisk(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := a.taskManager.UpsertTask(task); err != nil {
+		return nil, err
+	}
+
+	return a.taskManager.GetTask(taskID)
+}
+
+// RetryTask retries a failed task
+func (a *App) RetryTask(taskID string) (*types.Task, error) {
+	task, err := a.taskManager.RetryTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("Retrying task", "taskId", taskID)
+
+	go a.processTask(taskID)
 
 	return task, nil
+}
+
+// UpdateTaskSourceLanguage updates the source language for a task
+func (a *App) UpdateTaskSourceLanguage(taskID string, sourceLang string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+	if sourceLang == "" {
+		return nil, fmt.Errorf("source language is required")
+	}
+
+	if _, err := a.ensureTaskLoaded(taskID); err != nil {
+		return nil, err
+	}
+
+	updated, err := a.taskManager.UpdateTaskSourceLang(taskID, sourceLang)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("Task source language updated", "taskId", taskID, "sourceLang", sourceLang)
+	return updated, nil
+}
+
+// downloadTaskInternal is the internal implementation without lock acquisition
+func (a *App) downloadTaskInternal(taskID string) (*types.Task, error) {
+	task, err := a.ensureTaskLoaded(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusDownloading,
+		ProgressDownloadStart,
+		types.TaskStatusPending,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Download stage rejected", "taskId", taskID, "error", err)
+		return nil, err
+	}
+
+	a.logger.Info("Download stage started", "taskId", taskID, "url", task.URL)
+
+	info, err := a.downloader.GetVideoInfo(task.URL)
+	if err != nil {
+		a.recordTaskError(taskID, err, "Failed to get video info", "url", task.URL)
+		return nil, err
+	}
+
+	duration := time.Duration(info.Duration) * time.Second
+	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
+
+	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, info.Thumbnail); err != nil {
+		a.recordTaskError(taskID, err, "Failed to update metadata")
+		return nil, err
+	}
+
+	updatedTask, err := a.taskManager.GetTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+	workDir := updatedTask.WorkDir
+	if workDir == "" {
+		err := fmt.Errorf("work directory not set for task %s", taskID)
+		a.recordTaskError(taskID, err, "Work directory missing after metadata update")
+		return nil, err
+	}
+
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		a.recordTaskError(taskID, err, "Failed to create work directory", "path", workDir)
+		return nil, err
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressMetadataFetched); err != nil {
+		return nil, err
+	}
+
+	if err := a.downloader.DownloadVideo(task.URL, workDir); err != nil {
+		a.recordTaskError(taskID, err, "Failed to download video", "url", task.URL)
+		return nil, err
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressVideoDownloaded); err != nil {
+		return nil, err
+	}
+
+	videoPath := fmt.Sprintf("%s/video.mp4", workDir)
+	if _, statErr := os.Stat(videoPath); os.IsNotExist(statErr) {
+		alt := fmt.Sprintf("%s/video.webm", workDir)
+		if _, altErr := os.Stat(alt); altErr == nil {
+			videoPath = alt
+		} else {
+			err := fmt.Errorf("video file missing after download")
+			a.recordTaskError(taskID, err, "No downloaded video found for audio extraction")
+			return nil, err
+		}
+	}
+
+	audioPath := fmt.Sprintf("%s/audio.aac", workDir)
+	if err := a.downloader.ExtractAudio(videoPath, audioPath); err != nil {
+		a.recordTaskError(taskID, err, "Failed to extract audio")
+		return nil, err
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressAudioExtracted); err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("Download stage completed", "taskId", taskID, "workDir", workDir)
+	return a.taskManager.GetTask(taskID)
+}
+
+// DownloadTask executes metadata fetching, workspace preparation, and media download
+func (a *App) DownloadTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.downloadTaskInternal(taskID)
+}
+
+// transcribeTaskInternal is the internal implementation without lock acquisition
+func (a *App) transcribeTaskInternal(taskID string) (*types.Task, error) {
+	task, err := a.ensureTaskLoaded(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if task.WorkDir == "" {
+		return nil, fmt.Errorf("task %s has no working directory", taskID)
+	}
+
+	switch task.Status {
+	case types.TaskStatusTranscribing:
+		return nil, fmt.Errorf("transcription already in progress")
+	case types.TaskStatusPending:
+		return nil, fmt.Errorf("download stage must complete before transcription")
+	case types.TaskStatusSummarizing:
+		return nil, fmt.Errorf("cannot transcribe while summarization is running")
+	}
+
+	if task.Progress < 60 {
+		return nil, fmt.Errorf("download stage must complete before transcription")
+	}
+
+	audioPath := fmt.Sprintf("%s/audio.aac", task.WorkDir)
+	if _, err := os.Stat(audioPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("download stage must complete before transcription")
+		}
+		a.recordTaskError(taskID, err, "Failed to access audio file for transcription")
+		return nil, err
+	}
+
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusTranscribing,
+		ProgressTranscribeStart,
+		types.TaskStatusDownloading,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Transcription stage rejected", "taskId", taskID, "error", err)
+		return nil, err
+	}
+
+	a.logger.Info("Transcription stage started", "taskId", taskID, "lang", task.SourceLang)
+
+	if err := a.yapRunner.Transcribe(audioPath, task.WorkDir, task.SourceLang); err != nil {
+		a.recordTaskError(taskID, err, "Failed to transcribe", "lang", task.SourceLang)
+		return nil, err
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusTranscribing, ProgressTranscribeComplete); err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("Transcription stage completed", "taskId", taskID)
+	return a.taskManager.GetTask(taskID)
+}
+
+// TranscribeTask triggers Yap transcription using the prepared audio file
+func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.transcribeTaskInternal(taskID)
+}
+
+// summarizeTaskInternal is the internal implementation without lock acquisition
+func (a *App) summarizeTaskInternal(taskID string) (*types.Task, error) {
+	task, err := a.ensureTaskLoaded(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	if task.WorkDir == "" {
+		return nil, fmt.Errorf("task %s has no working directory", taskID)
+	}
+
+	switch task.Status {
+	case types.TaskStatusSummarizing:
+		return nil, fmt.Errorf("summarization already in progress")
+	case types.TaskStatusPending, types.TaskStatusDownloading:
+		return nil, fmt.Errorf("run download and transcription stages before summarizing")
+	case types.TaskStatusTranscribing:
+		if task.Progress < 80 {
+			return nil, fmt.Errorf("transcription stage must complete before summarization")
+		}
+	}
+
+	srtPath := fmt.Sprintf("%s/subs_%s.srt", task.WorkDir, task.SourceLang)
+	srtBytes, err := os.ReadFile(srtPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("transcription stage must complete before summarization")
+		}
+		a.recordTaskError(taskID, err, "Failed to read transcript for summary")
+		return nil, err
+	}
+
+	if err := a.taskManager.BeginStage(
+		taskID,
+		types.TaskStatusSummarizing,
+		ProgressSummarizeStart,
+		types.TaskStatusTranscribing,
+		types.TaskStatusFailed,
+		types.TaskStatusDone,
+	); err != nil {
+		a.logger.Warn("Summarization stage rejected", "taskId", taskID, "error", err)
+		return nil, err
+	}
+
+	a.logger.Info("Summarization stage started", "taskId", taskID, "provider", a.settings.APIProvider)
+
+	sumBytes, summarizeErr := a.summarizer.SummarizeStructured(
+		a.ctx,
+		a.settings.APIKey,
+		string(srtBytes),
+		a.settings.SummaryLength,
+		a.settings.SummaryLanguage,
+		a.settings.Temperature,
+		a.settings.MaxTokens,
+	)
+
+	summaryPath := fmt.Sprintf("%s/summary_structured.json", task.WorkDir)
+	if summarizeErr != nil {
+		a.logger.Error("Summarization failed", "taskId", taskID, "error", summarizeErr)
+		_ = a.storage.SaveLog(task.WorkDir, "summarize", fmt.Sprintf("Summary generation failed: %v", summarizeErr))
+		placeholder := []byte(`{"type":"structured","content":{"keyPoints":[],"mainTopic":"","conclusion":"","tags":[]}}`)
+		if writeErr := os.WriteFile(summaryPath, placeholder, 0644); writeErr != nil {
+			a.logger.Error("Failed to write placeholder summary", "taskId", taskID, "error", writeErr)
+		}
+	} else {
+		if writeErr := os.WriteFile(summaryPath, sumBytes, 0644); writeErr != nil {
+			a.logger.Error("Failed to write summary", "taskId", taskID, "error", writeErr)
+			_ = a.storage.SaveLog(task.WorkDir, "summarize", fmt.Sprintf("Failed to write summary: %v", writeErr))
+		} else {
+			_ = a.storage.SaveLog(task.WorkDir, "summarize", "Summary generated via OpenRouter")
+			a.logger.Info("Summarization complete", "taskId", taskID, "path", summaryPath)
+		}
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusSummarizing, ProgressSummarizeComplete); err != nil {
+		return nil, err
+	}
+
+	if summarizeErr == nil {
+		if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, ProgressTaskComplete); err != nil {
+			return nil, err
+		}
+	}
+
+	updatedTask, getErr := a.taskManager.GetTask(taskID)
+	if getErr != nil {
+		return nil, getErr
+	}
+
+	return updatedTask, summarizeErr
+}
+
+// SummarizeTask generates video summaries via the configured LLM client
+func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.summarizeTaskInternal(taskID)
 }
 
 // GetAllTasks returns all processed tasks
@@ -382,150 +752,62 @@ func (a *App) emitReloadEvent() {
 	runtime.EventsEmit(a.ctx, "reload-videos")
 }
 
+func (a *App) recordTaskError(taskID string, err error, message string, attrs ...any) {
+	if err == nil {
+		return
+	}
+
+	fields := append([]any{"taskId", taskID, "error", err}, attrs...)
+	a.logger.Error(message, fields...)
+
+	if setErr := a.taskManager.SetTaskError(taskID, fmt.Sprintf("%s: %v", message, err)); setErr != nil {
+		a.logger.Error("Failed to record task error", "taskId", taskID, "error", setErr)
+	}
+}
+
 // processTask handles the actual task processing
-func (a *App) processTask(task *types.Task) {
-	a.logger.Info("Processing task started", "taskId", task.ID, "url", task.URL)
-
-	// Update status to downloading
-	a.taskManager.UpdateTaskStatus(types.TaskStatusDownloading, 10)
-	a.logger.Debug("Task status updated", "taskId", task.ID, "status", "downloading")
-
-	// Get video info
-	a.logger.Debug("Fetching video info", "taskId", task.ID)
-	info, err := a.downloader.GetVideoInfo(task.URL)
-	if err != nil {
-		a.logger.Error("Failed to get video info", "taskId", task.ID, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to get video info: %v", err))
-		return
-	}
-	a.logger.Info("Video info retrieved", "taskId", task.ID, "videoId", info.ID, "title", info.Title)
-
-	// Update task metadata
-	duration := time.Duration(info.Duration) * time.Second
-	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
-
-	err = a.taskManager.UpdateTaskMetadata(
-		info.ID,
-		info.Title,
-		info.Channel,
-		durationStr,
-		info.Thumbnail,
-	)
-	if err != nil {
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to update metadata: %v", err))
+func (a *App) processTask(taskID string) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
 		return
 	}
 
-	// Create work directory
-	workDir := a.storage.GetTaskDir(info.Title, info.ID)
-
-	// Ensure work directory exists
-	if err := os.MkdirAll(workDir, 0755); err != nil {
-		a.logger.Error("Failed to create work directory", "taskId", task.ID, "path", workDir, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to create work directory: %v", err))
-		return
-	}
-	a.logger.Info("Work directory created", "taskId", task.ID, "path", workDir)
-
-	// Update task with work directory
-	task.WorkDir = workDir
-
-	// Now save metadata after directory is created
-	if err := a.storage.SaveMetadata(task); err != nil {
-		a.logger.Error("Failed to save task metadata", "taskId", task.ID, "error", err)
-	}
-
-	// Download video
-	a.taskManager.UpdateTaskStatus(types.TaskStatusDownloading, 30)
-	a.logger.Info("Downloading video", "taskId", task.ID)
-	err = a.downloader.DownloadVideo(task.URL, workDir)
-	if err != nil {
-		a.logger.Error("Failed to download video", "taskId", task.ID, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to download video: %v", err))
-		return
-	}
-	a.logger.Info("Video downloaded successfully", "taskId", task.ID)
-
-	// Extract audio for transcription
-	// Choose existing video file (prefer mp4, fallback to webm)
-	videoPath := fmt.Sprintf("%s/video.mp4", workDir)
-	if _, statErr := os.Stat(videoPath); os.IsNotExist(statErr) {
-		alt := fmt.Sprintf("%s/video.webm", workDir)
-		if _, statErr2 := os.Stat(alt); statErr2 == nil {
-			videoPath = alt
+	locked := true
+	defer func() {
+		if locked {
+			a.taskManager.UnlockTask(taskID)
 		}
-	}
-	audioPath := fmt.Sprintf("%s/audio.aac", workDir)
-	if _, statErr := os.Stat(videoPath); os.IsNotExist(statErr) {
-		a.logger.Error("No downloaded video found for audio extraction", "taskId", task.ID)
-		a.taskManager.SetTaskError("video file missing after download")
-		return
-	}
-	a.logger.Info("Extracting audio from video", "taskId", task.ID)
-	err = a.downloader.ExtractAudio(videoPath, audioPath)
-	if err != nil {
-		a.logger.Error("Failed to extract audio", "taskId", task.ID, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to extract audio: %v", err))
-		return
-	}
-	a.logger.Info("Audio extracted successfully", "taskId", task.ID)
+	}()
 
-	// Always use yap for transcription
-	a.taskManager.UpdateTaskStatus(types.TaskStatusTranscribing, 60)
-	a.logger.Info("Starting transcription with yap", "taskId", task.ID, "lang", task.SourceLang)
-	err = a.yapRunner.Transcribe(audioPath, workDir, task.SourceLang)
-	if err != nil {
-		a.logger.Error("Failed to transcribe", "taskId", task.ID, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to transcribe: %v", err))
-		return
-	}
-	a.logger.Info("Transcription complete", "taskId", task.ID)
+	a.logger.Info("Processing task started", "taskId", taskID)
 
-	// Summarizing stage via OpenRouter if configured
-	a.taskManager.UpdateTaskStatus(types.TaskStatusSummarizing, 85)
-	a.logger.Info("Starting summarization", "taskId", task.ID, "provider", a.settings.APIProvider)
-
-	// Load transcript text (use the SRT file we generated)
-	srtPath := fmt.Sprintf("%s/subs_%s.srt", workDir, task.SourceLang)
-	srtBytes, err := os.ReadFile(srtPath)
-	if err != nil {
-		a.logger.Error("Failed to read transcript for summary", "taskId", task.ID, "error", err)
-		a.taskManager.SetTaskError(fmt.Sprintf("Failed to read transcript for summary: %v", err))
+	if _, err := a.downloadTaskInternal(taskID); err != nil {
+		a.logger.Error("Download stage failed", "taskId", taskID, "error", err)
 		return
 	}
 
-	// Only implement OpenRouter path for now (requested)
-	// For now, always try OpenRouter summarization as requested.
-	sumBytes, err := a.summarizer.SummarizeStructured(a.ctx, a.settings.APIKey, string(srtBytes), a.settings.SummaryLength, a.settings.SummaryLanguage, a.settings.Temperature, a.settings.MaxTokens)
-	summaryPath := fmt.Sprintf("%s/summary_structured.json", workDir)
-	if err != nil {
-		// Log but do not fail the entire task; save a minimal placeholder
-		a.logger.Error("Summarization failed", "taskId", task.ID, "error", err)
-		_ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Summary generation failed: %v", err))
-		// Save placeholder to avoid 404s in UI
-		placeholder := []byte(`{"type":"structured","content":{"keyPoints":[],"mainTopic":"","conclusion":"","tags":[]}}`)
-		if werr := os.WriteFile(summaryPath, placeholder, 0644); werr != nil {
-			a.logger.Error("Failed to write placeholder summary", "taskId", task.ID, "error", werr)
-		}
-	} else {
-		if werr := os.WriteFile(summaryPath, sumBytes, 0644); werr != nil {
-			a.logger.Error("Failed to write summary", "taskId", task.ID, "error", werr)
-			_ = a.storage.SaveLog(workDir, "summarize", fmt.Sprintf("Failed to write summary: %v", werr))
-		} else {
-			_ = a.storage.SaveLog(workDir, "summarize", "Summary generated via OpenRouter")
-			a.logger.Info("Summarization complete", "taskId", task.ID, "path", summaryPath)
-		}
+	if _, err := a.transcribeTaskInternal(taskID); err != nil {
+		a.logger.Error("Transcription stage failed", "taskId", taskID, "error", err)
+		return
 	}
 
-	// Mark as done
-	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
+	if _, err := a.summarizeTaskInternal(taskID); err != nil {
+		a.logger.Warn("Summarization stage completed with warnings", "taskId", taskID, "error", err)
+	}
+
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, ProgressTaskComplete); err != nil {
+		a.logger.Error("Failed to finalize task", "taskId", taskID, "error", err)
+		return
+	}
+
+	// Unlock before clearing task to avoid double-unlock
+	a.taskManager.UnlockTask(taskID)
+	locked = false
+	a.taskManager.ClearTask(taskID)
+
 	a.emitReloadEvent()
-	a.logger.Info("Task completed successfully", "taskId", task.ID)
-
-	// Clear current task ID
-	if a.currentTaskID == task.ID {
-		a.currentTaskID = ""
-	}
+	a.logger.Info("Task completed successfully", "taskId", taskID)
 }
 
 // GetDebugInfo returns debug information about the environment and PATH

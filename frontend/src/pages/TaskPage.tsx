@@ -1,19 +1,32 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Play, 
+import {
+  Play,
   ChevronLeft,
   Clock,
   FileText,
   Copy,
-  Check
+  Check,
+  RefreshCcw,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X
 } from 'lucide-react'
 import BilingualSubtitle from '@/components/BilingualSubtitle'
 import VideoPlayer, { VideoPlayerHandle } from '@/components/VideoPlayer'
-import { GetAllTasks, GetTaskSubtitles } from '../../wailsjs/go/main/App'
+import { 
+  GetAllTasks, 
+  GetTaskSubtitles, 
+  UpdateTaskSourceLanguage,
+  DownloadTask,
+  TranscribeTask,
+  SummarizeTask
+} from '../../wailsjs/go/main/App'
 import { types, main } from '../../wailsjs/go/models'
 
 type StructuredSummary = {
@@ -36,11 +49,46 @@ export default function TaskPage() {
   const [subtitles, setSubtitles] = useState<any[]>([])
   const [transcriptSubtitles, setTranscriptSubtitles] = useState<main.SubtitleEntry[]>([])
   const [summary, setSummary] = useState<StructuredSummary | null>(null)
+  const [selectedLang, setSelectedLang] = useState<string>('en')
+  const [isUpdatingLanguage, setIsUpdatingLanguage] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [actionHistory, setActionHistory] = useState<
+    { id: number; type: 'success' | 'error'; message: string; timestamp: number }[]
+  >([])
+  const [stickyError, setStickyError] = useState<string | null>(null)
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
+  const feedbackId = useRef(0)
+
+  const disableLanguageSelect = isUpdatingLanguage || isDownloading || isTranscribing
+  const disableDownload = isDownloading || isTranscribing || isSummarizing
+  const disableTranscribe = isTranscribing || isDownloading || isSummarizing
+  const disableSummarize = isSummarizing || isDownloading || isTranscribing
+  const clearStickyError = () => setStickyError(null)
+
+  const languageOptions = [
+    { value: 'en', label: 'English' },
+    { value: 'zh', label: 'Chinese' },
+    { value: 'es', label: 'Spanish' },
+    { value: 'fr', label: 'French' },
+    { value: 'de', label: 'German' },
+    { value: 'ja', label: 'Japanese' },
+    { value: 'ko', label: 'Korean' },
+    { value: 'ru', label: 'Russian' },
+    { value: 'pt', label: 'Portuguese' },
+    { value: 'it', label: 'Italian' }
+  ]
 
   useEffect(() => {
     loadTask()
   }, [taskId])
+
+  useEffect(() => {
+    if (video?.sourceLang) {
+      setSelectedLang(video.sourceLang)
+    }
+  }, [video?.sourceLang])
 
   const loadTask = async () => {
     if (!taskId) return
@@ -140,8 +188,108 @@ export default function TaskPage() {
       }
     } catch (err) {
       console.error('Failed to load task:', err)
+      setStickyError('Failed to load task details. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const pushFeedback = (type: 'success' | 'error', message: string) => {
+    feedbackId.current += 1
+    const entry = { id: feedbackId.current, type, message, timestamp: Date.now() }
+    setActionHistory((prev) => [entry, ...prev].slice(0, 4))
+  }
+
+  const dismissFeedback = (id: number) => {
+    setActionHistory((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const formatFeedbackTime = (value: number) => {
+    const date = new Date(value)
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+
+  const handleLanguageChange = async (lang: string) => {
+    if (!taskId) return
+    const previousLang = selectedLang
+
+    setSelectedLang(lang)
+    setIsUpdatingLanguage(true)
+
+    try {
+      await UpdateTaskSourceLanguage(taskId, lang)
+      await loadTask()
+      pushFeedback('success', 'Source language updated. Regenerate transcript to apply the change.')
+      setStickyError(null)
+    } catch (err) {
+      console.error('Failed to update source language:', err)
+      setSelectedLang(previousLang)
+      const message = err instanceof Error ? err.message : 'Failed to update source language'
+      pushFeedback('error', message)
+      setStickyError(message)
+    } finally {
+      setIsUpdatingLanguage(false)
+    }
+  }
+
+  const handleRedownload = async () => {
+    if (!taskId) return
+
+    setIsDownloading(true)
+
+    try {
+      await DownloadTask(taskId)
+      await loadTask()
+      pushFeedback('success', 'Media files refreshed successfully.')
+      setStickyError(null)
+    } catch (err) {
+      console.error('Failed to redownload media:', err)
+      const message = err instanceof Error ? err.message : 'Failed to redownload media'
+      pushFeedback('error', message)
+      setStickyError(message)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleRetranscribe = async () => {
+    if (!taskId) return
+
+    setIsTranscribing(true)
+
+    try {
+      await TranscribeTask(taskId)
+      await loadTask()
+      setSummary(null)
+      pushFeedback('success', 'Transcript regenerated. Run summary again to refresh insights.')
+      setStickyError(null)
+    } catch (err) {
+      console.error('Failed to retranscribe:', err)
+      const message = err instanceof Error ? err.message : 'Failed to regenerate transcript'
+      pushFeedback('error', message)
+      setStickyError(message)
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
+  const handleResummarize = async () => {
+    if (!taskId) return
+
+    setIsSummarizing(true)
+
+    try {
+      await SummarizeTask(taskId)
+      await loadTask()
+      pushFeedback('success', 'Summary regenerated successfully.')
+      setStickyError(null)
+    } catch (err) {
+      console.error('Failed to regenerate summary:', err)
+      const message = err instanceof Error ? err.message : 'Failed to regenerate summary'
+      pushFeedback('error', message)
+      setStickyError(message)
+    } finally {
+      setIsSummarizing(false)
     }
   }
 
@@ -230,6 +378,27 @@ export default function TaskPage() {
         </div>
       </div>
 
+      {stickyError && (
+        <div className="border-b border-destructive/40 bg-destructive/10">
+          <div className="mx-auto flex w-full max-w-5xl items-start gap-3 px-6 py-3 text-destructive">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-none" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">Latest action failed</p>
+              <p className="text-sm">{stickyError}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive hover:text-destructive"
+              onClick={clearStickyError}
+              aria-label="Dismiss stage error"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8">
           <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -315,6 +484,107 @@ export default function TaskPage() {
                         <p>
                           <span className="text-muted-foreground">Work Directory:</span> {video.workDir}
                         </p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold">Manual Controls</h3>
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                        <span className="text-sm font-medium">Source Language</span>
+                        <Select
+                          value={selectedLang}
+                          onValueChange={handleLanguageChange}
+                          disabled={disableLanguageSelect}
+                        >
+                          <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {languageOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={handleRedownload}
+                          disabled={disableDownload}
+                        >
+                          {isDownloading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Refresh Download
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleRetranscribe}
+                          disabled={disableTranscribe}
+                        >
+                          {isTranscribing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Regenerate Transcript
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleResummarize}
+                          disabled={disableSummarize}
+                        >
+                          {isSummarizing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Regenerate Summary
+                        </Button>
+                      </div>
+                      {actionHistory.length > 0 && (
+                        <div className="space-y-2">
+                          {actionHistory.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${
+                                entry.type === 'error'
+                                  ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                                  : 'border-emerald-400/40 bg-emerald-400/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              }`}
+                              role="alert"
+                            >
+                              {entry.type === 'error' ? (
+                                <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
+                              ) : (
+                                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none" />
+                              )}
+                              <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium">
+                                  {entry.type === 'error' ? 'Action failed' : 'Action completed'}
+                                </p>
+                                <p className="text-sm leading-snug">{entry.message}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatFeedbackTime(entry.timestamp)}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={() => dismissFeedback(entry.id)}
+                                aria-label="Dismiss feedback"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
