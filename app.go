@@ -235,6 +235,34 @@ func (a *App) ListActiveTasks() []*types.Task {
 	return a.taskManager.ListTasks()
 }
 
+// ensureTaskLoaded guarantees the task is present in the in-memory manager,
+// reloading it from disk metadata if necessary.
+func (a *App) ensureTaskLoaded(taskID string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+
+	if task, err := a.taskManager.GetTask(taskID); err == nil {
+		return task, nil
+	}
+
+	tasks, err := a.storage.GetAllTasks()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, t := range tasks {
+		if t.ID == taskID {
+			if _, err := a.taskManager.UpsertTask(t); err != nil {
+				return nil, err
+			}
+			return a.taskManager.GetTask(taskID)
+		}
+	}
+
+	return nil, fmt.Errorf("task %s not found", taskID)
+}
+
 // RetryTask retries a failed task
 func (a *App) RetryTask(taskID string) (*types.Task, error) {
 	task, err := a.taskManager.RetryTask(taskID)
@@ -249,9 +277,31 @@ func (a *App) RetryTask(taskID string) (*types.Task, error) {
 	return task, nil
 }
 
+// UpdateTaskSourceLanguage updates the source language for a task
+func (a *App) UpdateTaskSourceLanguage(taskID string, sourceLang string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+	if sourceLang == "" {
+		return nil, fmt.Errorf("source language is required")
+	}
+
+	if _, err := a.ensureTaskLoaded(taskID); err != nil {
+		return nil, err
+	}
+
+	updated, err := a.taskManager.UpdateTaskSourceLang(taskID, sourceLang)
+	if err != nil {
+		return nil, err
+	}
+
+	a.logger.Info("Task source language updated", "taskId", taskID, "sourceLang", sourceLang)
+	return updated, nil
+}
+
 // DownloadTask executes metadata fetching, workspace preparation, and media download
 func (a *App) DownloadTask(taskID string) (*types.Task, error) {
-	task, err := a.taskManager.GetTask(taskID)
+	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +404,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 
 // TranscribeTask triggers Yap transcription using the prepared audio file
 func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
-	task, err := a.taskManager.GetTask(taskID)
+	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +446,7 @@ func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
 
 // SummarizeTask generates video summaries via the configured LLM client
 func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
-	task, err := a.taskManager.GetTask(taskID)
+	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -451,6 +501,12 @@ func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
 
 	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusSummarizing, 95); err != nil {
 		return nil, err
+	}
+
+	if summarizeErr == nil {
+		if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, 100); err != nil {
+			return nil, err
+		}
 	}
 
 	updatedTask, getErr := a.taskManager.GetTask(taskID)

@@ -32,3 +32,5 @@ export function SummarizeTask(arg1:string):Promise<types.Task>;
 export function TranscribeTask(arg1:string):Promise<types.Task>;
 
 export function UpdateSettings(arg1:types.Settings):Promise<types.Settings>;
+
+export function UpdateTaskSourceLanguage(arg1:string,arg2:string):Promise<types.Task>;

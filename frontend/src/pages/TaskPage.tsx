@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -9,11 +10,20 @@ import {
   Clock,
   FileText,
   Copy,
-  Check
+  Check,
+  RefreshCcw,
+  Loader2
 } from 'lucide-react'
 import BilingualSubtitle from '@/components/BilingualSubtitle'
 import VideoPlayer, { VideoPlayerHandle } from '@/components/VideoPlayer'
-import { GetAllTasks, GetTaskSubtitles } from '../../wailsjs/go/main/App'
+import { 
+  GetAllTasks, 
+  GetTaskSubtitles, 
+  UpdateTaskSourceLanguage,
+  DownloadTask,
+  TranscribeTask,
+  SummarizeTask
+} from '../../wailsjs/go/main/App'
 import { types, main } from '../../wailsjs/go/models'
 
 type StructuredSummary = {
@@ -36,11 +46,39 @@ export default function TaskPage() {
   const [subtitles, setSubtitles] = useState<any[]>([])
   const [transcriptSubtitles, setTranscriptSubtitles] = useState<main.SubtitleEntry[]>([])
   const [summary, setSummary] = useState<StructuredSummary | null>(null)
+  const [selectedLang, setSelectedLang] = useState<string>('en')
+  const [isUpdatingLanguage, setIsUpdatingLanguage] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
+
+  const isBusy = isUpdatingLanguage || isDownloading || isTranscribing || isSummarizing
+
+  const languageOptions = [
+    { value: 'en', label: 'English' },
+    { value: 'zh', label: 'Chinese' },
+    { value: 'es', label: 'Spanish' },
+    { value: 'fr', label: 'French' },
+    { value: 'de', label: 'German' },
+    { value: 'ja', label: 'Japanese' },
+    { value: 'ko', label: 'Korean' },
+    { value: 'ru', label: 'Russian' },
+    { value: 'pt', label: 'Portuguese' },
+    { value: 'it', label: 'Italian' }
+  ]
 
   useEffect(() => {
     loadTask()
   }, [taskId])
+
+  useEffect(() => {
+    if (video?.sourceLang) {
+      setSelectedLang(video.sourceLang)
+    }
+  }, [video?.sourceLang])
 
   const loadTask = async () => {
     if (!taskId) return
@@ -142,6 +180,90 @@ export default function TaskPage() {
       console.error('Failed to load task:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleLanguageChange = async (lang: string) => {
+    if (!taskId) return
+    const previousLang = selectedLang
+
+    setSelectedLang(lang)
+    setActionError(null)
+    setActionMessage(null)
+    setIsUpdatingLanguage(true)
+
+    try {
+      await UpdateTaskSourceLanguage(taskId, lang)
+      await loadTask()
+      setActionMessage('Source language updated. Regenerate transcript to apply the change.')
+    } catch (err) {
+      console.error('Failed to update source language:', err)
+      setSelectedLang(previousLang)
+      const message = err instanceof Error ? err.message : 'Failed to update source language'
+      setActionError(message)
+    } finally {
+      setIsUpdatingLanguage(false)
+    }
+  }
+
+  const handleRedownload = async () => {
+    if (!taskId) return
+
+    setActionError(null)
+    setActionMessage(null)
+    setIsDownloading(true)
+
+    try {
+      await DownloadTask(taskId)
+      await loadTask()
+      setActionMessage('Media files refreshed successfully.')
+    } catch (err) {
+      console.error('Failed to redownload media:', err)
+      const message = err instanceof Error ? err.message : 'Failed to redownload media'
+      setActionError(message)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleRetranscribe = async () => {
+    if (!taskId) return
+
+    setActionError(null)
+    setActionMessage(null)
+    setIsTranscribing(true)
+
+    try {
+      await TranscribeTask(taskId)
+      await loadTask()
+      setSummary(null)
+      setActionMessage('Transcript regenerated. Run summary again to refresh insights.')
+    } catch (err) {
+      console.error('Failed to retranscribe:', err)
+      const message = err instanceof Error ? err.message : 'Failed to regenerate transcript'
+      setActionError(message)
+    } finally {
+      setIsTranscribing(false)
+    }
+  }
+
+  const handleResummarize = async () => {
+    if (!taskId) return
+
+    setActionError(null)
+    setActionMessage(null)
+    setIsSummarizing(true)
+
+    try {
+      await SummarizeTask(taskId)
+      await loadTask()
+      setActionMessage('Summary regenerated successfully.')
+    } catch (err) {
+      console.error('Failed to regenerate summary:', err)
+      const message = err instanceof Error ? err.message : 'Failed to regenerate summary'
+      setActionError(message)
+    } finally {
+      setIsSummarizing(false)
     }
   }
 
@@ -315,6 +437,74 @@ export default function TaskPage() {
                         <p>
                           <span className="text-muted-foreground">Work Directory:</span> {video.workDir}
                         </p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold">Manual Controls</h3>
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                        <span className="text-sm font-medium">Source Language</span>
+                        <Select
+                          value={selectedLang}
+                          onValueChange={handleLanguageChange}
+                          disabled={isBusy}
+                        >
+                          <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {languageOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={handleRedownload}
+                          disabled={isBusy}
+                        >
+                          {isDownloading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Refresh Download
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleRetranscribe}
+                          disabled={isBusy}
+                        >
+                          {isTranscribing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Regenerate Transcript
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleResummarize}
+                          disabled={isBusy}
+                        >
+                          {isSummarizing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                          )}
+                          Regenerate Summary
+                        </Button>
+                      </div>
+                      {actionMessage && (
+                        <p className="text-sm text-green-600">{actionMessage}</p>
+                      )}
+                      {actionError && (
+                        <p className="text-sm text-destructive">{actionError}</p>
                       )}
                     </div>
                   </div>

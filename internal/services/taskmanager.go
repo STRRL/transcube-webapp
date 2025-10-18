@@ -42,6 +42,23 @@ func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, e
 	return cloneTask(task), nil
 }
 
+// UpsertTask loads an existing task into memory or replaces the existing copy
+func (tm *TaskManager) UpsertTask(task *types.Task) (*types.Task, error) {
+	if task == nil {
+		return nil, fmt.Errorf("task is nil")
+	}
+	if task.ID == "" {
+		return nil, fmt.Errorf("task ID is required")
+	}
+
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	copy := cloneTask(task)
+	tm.tasks[copy.ID] = copy
+	return cloneTask(copy), nil
+}
+
 // GetTask returns a copy of the task with the given ID
 func (tm *TaskManager) GetTask(taskID string) (*types.Task, error) {
 	tm.mu.RLock()
@@ -113,6 +130,28 @@ func (tm *TaskManager) UpdateTaskMetadata(taskID, videoID, title, channel, durat
 	task.WorkDir = tm.storage.GetTaskDir(title, videoID)
 
 	return nil
+}
+
+// UpdateTaskSourceLang updates the source language for a task
+func (tm *TaskManager) UpdateTaskSourceLang(taskID string, sourceLang string) (*types.Task, error) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	task, ok := tm.tasks[taskID]
+	if !ok {
+		return nil, fmt.Errorf("task %s not found", taskID)
+	}
+
+	task.SourceLang = sourceLang
+	task.UpdatedAt = time.Now()
+
+	if task.WorkDir != "" {
+		if err := tm.storage.SaveMetadata(task); err != nil {
+			return nil, fmt.Errorf("failed to persist task metadata: %w", err)
+		}
+	}
+
+	return cloneTask(task), nil
 }
 
 // SetTaskError marks the task as failed with the provided error message

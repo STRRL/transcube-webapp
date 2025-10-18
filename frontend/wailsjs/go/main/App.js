@@ -61,3 +61,7 @@ export function TranscribeTask(arg1) {
 export function UpdateSettings(arg1) {
   return window['go']['main']['App']['UpdateSettings'](arg1);
 }
+
+export function UpdateTaskSourceLanguage(arg1, arg2) {
+  return window['go']['main']['App']['UpdateTaskSourceLanguage'](arg1, arg2);
+}
