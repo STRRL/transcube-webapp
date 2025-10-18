@@ -14,6 +14,19 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// Progress value constants for task stages
+const (
+	ProgressDownloadStart      = 10
+	ProgressMetadataFetched    = 30
+	ProgressVideoDownloaded    = 45
+	ProgressAudioExtracted     = 60
+	ProgressTranscribeStart    = 60
+	ProgressTranscribeComplete = 80
+	ProgressSummarizeStart     = 85
+	ProgressSummarizeComplete  = 95
+	ProgressTaskComplete       = 100
+)
+
 // App struct
 type App struct {
 	ctx           context.Context
@@ -310,8 +323,8 @@ func (a *App) UpdateTaskSourceLanguage(taskID string, sourceLang string) (*types
 	return updated, nil
 }
 
-// DownloadTask executes metadata fetching, workspace preparation, and media download
-func (a *App) DownloadTask(taskID string) (*types.Task, error) {
+// downloadTaskInternal is the internal implementation without lock acquisition
+func (a *App) downloadTaskInternal(taskID string) (*types.Task, error) {
 	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
@@ -320,7 +333,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 	if err := a.taskManager.BeginStage(
 		taskID,
 		types.TaskStatusDownloading,
-		10,
+		ProgressDownloadStart,
 		types.TaskStatusPending,
 		types.TaskStatusFailed,
 		types.TaskStatusDone,
@@ -361,7 +374,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 		return nil, err
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, 30); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressMetadataFetched); err != nil {
 		return nil, err
 	}
 
@@ -370,7 +383,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 		return nil, err
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, 45); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressVideoDownloaded); err != nil {
 		return nil, err
 	}
 
@@ -392,7 +405,7 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 		return nil, err
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, 60); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDownloading, ProgressAudioExtracted); err != nil {
 		return nil, err
 	}
 
@@ -400,8 +413,20 @@ func (a *App) DownloadTask(taskID string) (*types.Task, error) {
 	return a.taskManager.GetTask(taskID)
 }
 
-// TranscribeTask triggers Yap transcription using the prepared audio file
-func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
+// DownloadTask executes metadata fetching, workspace preparation, and media download
+func (a *App) DownloadTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.downloadTaskInternal(taskID)
+}
+
+// transcribeTaskInternal is the internal implementation without lock acquisition
+func (a *App) transcribeTaskInternal(taskID string) (*types.Task, error) {
 	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
@@ -436,7 +461,7 @@ func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
 	if err := a.taskManager.BeginStage(
 		taskID,
 		types.TaskStatusTranscribing,
-		60,
+		ProgressTranscribeStart,
 		types.TaskStatusDownloading,
 		types.TaskStatusFailed,
 		types.TaskStatusDone,
@@ -452,7 +477,7 @@ func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
 		return nil, err
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusTranscribing, 80); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusTranscribing, ProgressTranscribeComplete); err != nil {
 		return nil, err
 	}
 
@@ -460,8 +485,20 @@ func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
 	return a.taskManager.GetTask(taskID)
 }
 
-// SummarizeTask generates video summaries via the configured LLM client
-func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
+// TranscribeTask triggers Yap transcription using the prepared audio file
+func (a *App) TranscribeTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.transcribeTaskInternal(taskID)
+}
+
+// summarizeTaskInternal is the internal implementation without lock acquisition
+func (a *App) summarizeTaskInternal(taskID string) (*types.Task, error) {
 	task, err := a.ensureTaskLoaded(taskID)
 	if err != nil {
 		return nil, err
@@ -495,7 +532,7 @@ func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
 	if err := a.taskManager.BeginStage(
 		taskID,
 		types.TaskStatusSummarizing,
-		85,
+		ProgressSummarizeStart,
 		types.TaskStatusTranscribing,
 		types.TaskStatusFailed,
 		types.TaskStatusDone,
@@ -534,12 +571,12 @@ func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
 		}
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusSummarizing, 95); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusSummarizing, ProgressSummarizeComplete); err != nil {
 		return nil, err
 	}
 
 	if summarizeErr == nil {
-		if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, 100); err != nil {
+		if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, ProgressTaskComplete); err != nil {
 			return nil, err
 		}
 	}
@@ -550,6 +587,18 @@ func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
 	}
 
 	return updatedTask, summarizeErr
+}
+
+// SummarizeTask generates video summaries via the configured LLM client
+func (a *App) SummarizeTask(taskID string) (*types.Task, error) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return nil, err
+	}
+	defer a.taskManager.UnlockTask(taskID)
+
+	return a.summarizeTaskInternal(taskID)
 }
 
 // GetAllTasks returns all processed tasks
@@ -718,27 +767,43 @@ func (a *App) recordTaskError(taskID string, err error, message string, attrs ..
 
 // processTask handles the actual task processing
 func (a *App) processTask(taskID string) {
+	// Acquire task lock to prevent concurrent operations
+	if err := a.taskManager.LockTask(taskID); err != nil {
+		a.logger.Warn("Task is already being processed", "taskId", taskID, "error", err)
+		return
+	}
+
+	locked := true
+	defer func() {
+		if locked {
+			a.taskManager.UnlockTask(taskID)
+		}
+	}()
+
 	a.logger.Info("Processing task started", "taskId", taskID)
 
-	if _, err := a.DownloadTask(taskID); err != nil {
+	if _, err := a.downloadTaskInternal(taskID); err != nil {
 		a.logger.Error("Download stage failed", "taskId", taskID, "error", err)
 		return
 	}
 
-	if _, err := a.TranscribeTask(taskID); err != nil {
+	if _, err := a.transcribeTaskInternal(taskID); err != nil {
 		a.logger.Error("Transcription stage failed", "taskId", taskID, "error", err)
 		return
 	}
 
-	if _, err := a.SummarizeTask(taskID); err != nil {
+	if _, err := a.summarizeTaskInternal(taskID); err != nil {
 		a.logger.Warn("Summarization stage completed with warnings", "taskId", taskID, "error", err)
 	}
 
-	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, 100); err != nil {
+	if err := a.taskManager.UpdateTaskStatus(taskID, types.TaskStatusDone, ProgressTaskComplete); err != nil {
 		a.logger.Error("Failed to finalize task", "taskId", taskID, "error", err)
 		return
 	}
 
+	// Unlock before clearing task to avoid double-unlock
+	a.taskManager.UnlockTask(taskID)
+	locked = false
 	a.taskManager.ClearTask(taskID)
 
 	a.emitReloadEvent()

@@ -12,15 +12,17 @@ import (
 )
 
 type TaskManager struct {
-	mu      sync.RWMutex
-	tasks   map[string]*types.Task
-	storage *Storage
+	mu        sync.RWMutex
+	tasks     map[string]*types.Task
+	taskLocks map[string]*sync.Mutex
+	storage   *Storage
 }
 
 func NewTaskManager(storage *Storage) *TaskManager {
 	return &TaskManager{
-		tasks:   make(map[string]*types.Task),
-		storage: storage,
+		tasks:     make(map[string]*types.Task),
+		taskLocks: make(map[string]*sync.Mutex),
+		storage:   storage,
 	}
 }
 
@@ -67,7 +69,12 @@ func (tm *TaskManager) CreateTask(url, sourceLang, videoID, title, channel, dura
 		Thumbnail:  thumbnail,
 	}
 
-	task.WorkDir = tm.storage.GetTaskDir(title, videoID, task.ID)
+	workDir, err := tm.storage.GetTaskDir(title, videoID, task.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate work directory: %w", err)
+	}
+	task.WorkDir = workDir
+
 	if err := os.MkdirAll(task.WorkDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create task workspace: %w", err)
 	}
@@ -239,7 +246,10 @@ func (tm *TaskManager) UpdateTaskMetadata(taskID, videoID, title, channel, durat
 	task.UpdatedAt = time.Now()
 
 	if task.WorkDir == "" {
-		targetDir := tm.storage.GetTaskDir(task.Title, task.VideoID, task.ID)
+		targetDir, err := tm.storage.GetTaskDir(task.Title, task.VideoID, task.ID)
+		if err != nil {
+			return fmt.Errorf("failed to generate work directory: %w", err)
+		}
 		if err := os.MkdirAll(targetDir, 0755); err != nil {
 			return fmt.Errorf("failed to create work directory: %w", err)
 		}
@@ -328,6 +338,7 @@ func (tm *TaskManager) ClearTask(taskID string) {
 	defer tm.mu.Unlock()
 
 	delete(tm.tasks, taskID)
+	delete(tm.taskLocks, taskID)
 }
 
 // isTaskRunning checks if a task status indicates it's still running
@@ -354,6 +365,7 @@ func (tm *TaskManager) scheduleCleanup(taskID string) {
 
 		if task.Status == types.TaskStatusDone || task.Status == types.TaskStatusFailed {
 			delete(tm.tasks, taskID)
+			delete(tm.taskLocks, taskID)
 		}
 	})
 }
@@ -364,4 +376,34 @@ func cloneTask(task *types.Task) *types.Task {
 	}
 	copy := *task
 	return &copy
+}
+
+// getTaskLock returns the mutex for a specific task, creating it if necessary
+func (tm *TaskManager) getTaskLock(taskID string) *sync.Mutex {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	if _, exists := tm.taskLocks[taskID]; !exists {
+		tm.taskLocks[taskID] = &sync.Mutex{}
+	}
+	return tm.taskLocks[taskID]
+}
+
+// LockTask acquires the operation lock for a task, preventing concurrent operations.
+// Returns an error if the task is already locked.
+func (tm *TaskManager) LockTask(taskID string) error {
+	lock := tm.getTaskLock(taskID)
+
+	// Try to acquire the lock without blocking
+	if !lock.TryLock() {
+		return fmt.Errorf("task %s is already being processed", taskID)
+	}
+
+	return nil
+}
+
+// UnlockTask releases the operation lock for a task
+func (tm *TaskManager) UnlockTask(taskID string) {
+	lock := tm.getTaskLock(taskID)
+	lock.Unlock()
 }

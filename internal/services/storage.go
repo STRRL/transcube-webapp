@@ -29,13 +29,13 @@ func (s *Storage) EnsureWorkspace() error {
 
 // GetTaskDir returns the directory path for a specific task. The taskID ensures
 // concurrent tasks processing the same video do not collide on the filesystem.
-func (s *Storage) GetTaskDir(title string, videoID string, taskID string) string {
-	sanitized := s.sanitizeTitle(title)
+// taskID is required to prevent directory collisions between concurrent tasks.
+func (s *Storage) GetTaskDir(title string, videoID string, taskID string) (string, error) {
 	if taskID == "" {
-		dirname := fmt.Sprintf("%s__%s", sanitized, videoID)
-		return filepath.Join(s.workspace, dirname)
+		return "", fmt.Errorf("taskID is required to prevent directory collisions")
 	}
 
+	sanitized := s.sanitizeTitle(title)
 	suffix := taskID
 	if len(taskID) > 8 {
 		suffix = taskID[:8]
@@ -43,11 +43,11 @@ func (s *Storage) GetTaskDir(title string, videoID string, taskID string) string
 
 	if videoID == "" {
 		dirname := fmt.Sprintf("%s__%s", sanitized, suffix)
-		return filepath.Join(s.workspace, dirname)
+		return filepath.Join(s.workspace, dirname), nil
 	}
 
 	dirname := fmt.Sprintf("%s__%s__%s", sanitized, videoID, suffix)
-	return filepath.Join(s.workspace, dirname)
+	return filepath.Join(s.workspace, dirname), nil
 }
 
 // sanitizeTitle cleans the title for use as a directory name
