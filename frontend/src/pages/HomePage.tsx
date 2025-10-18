@@ -212,6 +212,8 @@ export default function HomePage() {
             const updatedLabel = updated
               ? new Date(updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
               : 'Just now'
+            const hasPreview = Boolean(task.thumbnail && task.title)
+            const statusVariant = task.status === 'failed' ? 'destructive' : 'secondary'
 
             return (
               <Card
@@ -221,16 +223,57 @@ export default function HomePage() {
                   ${task.status === 'failed' ? 'border-destructive/40 shadow-sm shadow-destructive/10' : 'border-border'}
                 `}
               >
-                <div className="aspect-video bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 flex flex-col justify-between">
-                  <Badge variant={task.status === 'failed' ? 'destructive' : 'secondary'} className="w-fit">
-                    {statusLabels[task.status] || task.status}
-                  </Badge>
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Task</p>
-                    <h3 className="text-base font-semibold line-clamp-3 text-foreground">
-                      {task.title || task.url || 'Processing task'}
-                    </h3>
-                  </div>
+                <div className="relative aspect-video overflow-hidden bg-muted">
+                  {hasPreview ? (
+                    <>
+                      <img
+                        src={task.thumbnail}
+                        alt={task.title}
+                        className="object-cover w-full h-full"
+                        onError={(e) => {
+                          e.currentTarget.src = `https://via.placeholder.com/640x360/09090b/ffffff?text=${encodeURIComponent(task.title?.substring(0, 20) || 'Video')}`
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/55 text-white p-4 flex flex-col justify-between">
+                        <div className="flex items-start justify-between gap-2">
+                          <Badge
+                            variant={statusVariant}
+                            className={`backdrop-blur-sm text-white ${
+                              statusVariant === 'destructive'
+                                ? ''
+                                : 'bg-white/20 hover:bg-white/30 border-white/20'
+                            }`}
+                          >
+                            {statusLabels[task.status] || task.status}
+                          </Badge>
+                          <span className="text-xs font-medium">{clampedProgress}%</span>
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="text-base font-semibold line-clamp-2">
+                            {task.title}
+                          </h3>
+                          {task.channel && (
+                            <p className="text-xs text-white/80 line-clamp-1">{task.channel}</p>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-white/80">
+                          {statusLabels[task.status] || task.status} · Updated {updatedLabel}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-4 flex flex-col justify-between">
+                      <Badge variant={statusVariant} className="w-fit">
+                        {statusLabels[task.status] || task.status}
+                      </Badge>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Task</p>
+                        <h3 className="text-base font-semibold line-clamp-3 text-foreground">
+                          {task.title || task.url || 'Processing task'}
+                        </h3>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <CardContent className="p-4 space-y-3 flex-1">
                   <div>
