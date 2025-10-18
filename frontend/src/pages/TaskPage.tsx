@@ -57,10 +57,15 @@ export default function TaskPage() {
   const [actionHistory, setActionHistory] = useState<
     { id: number; type: 'success' | 'error'; message: string; timestamp: number }[]
   >([])
+  const [stickyError, setStickyError] = useState<string | null>(null)
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
   const feedbackId = useRef(0)
 
-  const isBusy = isUpdatingLanguage || isDownloading || isTranscribing || isSummarizing
+  const disableLanguageSelect = isUpdatingLanguage || isDownloading || isTranscribing
+  const disableDownload = isDownloading || isTranscribing || isSummarizing
+  const disableTranscribe = isTranscribing || isDownloading || isSummarizing
+  const disableSummarize = isSummarizing || isDownloading || isTranscribing
+  const clearStickyError = () => setStickyError(null)
 
   const languageOptions = [
     { value: 'en', label: 'English' },
@@ -183,6 +188,7 @@ export default function TaskPage() {
       }
     } catch (err) {
       console.error('Failed to load task:', err)
+      setStickyError('Failed to load task details. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -214,11 +220,13 @@ export default function TaskPage() {
       await UpdateTaskSourceLanguage(taskId, lang)
       await loadTask()
       pushFeedback('success', 'Source language updated. Regenerate transcript to apply the change.')
+      setStickyError(null)
     } catch (err) {
       console.error('Failed to update source language:', err)
       setSelectedLang(previousLang)
       const message = err instanceof Error ? err.message : 'Failed to update source language'
       pushFeedback('error', message)
+      setStickyError(message)
     } finally {
       setIsUpdatingLanguage(false)
     }
@@ -233,10 +241,12 @@ export default function TaskPage() {
       await DownloadTask(taskId)
       await loadTask()
       pushFeedback('success', 'Media files refreshed successfully.')
+      setStickyError(null)
     } catch (err) {
       console.error('Failed to redownload media:', err)
       const message = err instanceof Error ? err.message : 'Failed to redownload media'
       pushFeedback('error', message)
+      setStickyError(message)
     } finally {
       setIsDownloading(false)
     }
@@ -252,10 +262,12 @@ export default function TaskPage() {
       await loadTask()
       setSummary(null)
       pushFeedback('success', 'Transcript regenerated. Run summary again to refresh insights.')
+      setStickyError(null)
     } catch (err) {
       console.error('Failed to retranscribe:', err)
       const message = err instanceof Error ? err.message : 'Failed to regenerate transcript'
       pushFeedback('error', message)
+      setStickyError(message)
     } finally {
       setIsTranscribing(false)
     }
@@ -270,10 +282,12 @@ export default function TaskPage() {
       await SummarizeTask(taskId)
       await loadTask()
       pushFeedback('success', 'Summary regenerated successfully.')
+      setStickyError(null)
     } catch (err) {
       console.error('Failed to regenerate summary:', err)
       const message = err instanceof Error ? err.message : 'Failed to regenerate summary'
       pushFeedback('error', message)
+      setStickyError(message)
     } finally {
       setIsSummarizing(false)
     }
@@ -363,6 +377,27 @@ export default function TaskPage() {
           )}
         </div>
       </div>
+
+      {stickyError && (
+        <div className="border-b border-destructive/40 bg-destructive/10">
+          <div className="mx-auto flex w-full max-w-5xl items-start gap-3 px-6 py-3 text-destructive">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-none" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold">Latest action failed</p>
+              <p className="text-sm">{stickyError}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive hover:text-destructive"
+              onClick={clearStickyError}
+              aria-label="Dismiss stage error"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8">
@@ -460,7 +495,7 @@ export default function TaskPage() {
                         <Select
                           value={selectedLang}
                           onValueChange={handleLanguageChange}
-                          disabled={isBusy}
+                          disabled={disableLanguageSelect}
                         >
                           <SelectTrigger className="w-full sm:w-56">
                             <SelectValue placeholder="Select language" />
@@ -478,7 +513,7 @@ export default function TaskPage() {
                         <Button
                           variant="outline"
                           onClick={handleRedownload}
-                          disabled={isBusy}
+                          disabled={disableDownload}
                         >
                           {isDownloading ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -490,7 +525,7 @@ export default function TaskPage() {
                         <Button
                           variant="outline"
                           onClick={handleRetranscribe}
-                          disabled={isBusy}
+                          disabled={disableTranscribe}
                         >
                           {isTranscribing ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -502,7 +537,7 @@ export default function TaskPage() {
                         <Button
                           variant="outline"
                           onClick={handleResummarize}
-                          disabled={isBusy}
+                          disabled={disableSummarize}
                         >
                           {isSummarizing ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -23,15 +24,32 @@ func NewTaskManager(storage *Storage) *TaskManager {
 	}
 }
 
-// CreateTask creates a new task and tracks it in memory
-func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, error) {
+// CreateTask creates a new task with pre-fetched metadata and tracks it in memory
+func (tm *TaskManager) CreateTask(url, sourceLang, videoID, title, channel, duration, thumbnail string) (*types.Task, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
+
+	if videoID == "" {
+		return nil, fmt.Errorf("video ID is required when creating a task")
+	}
 
 	for _, existing := range tm.tasks {
 		if existing.URL == url && tm.isTaskRunning(existing.Status) {
 			return nil, fmt.Errorf("a task is already running for this url: %s", url)
 		}
+		if existing.VideoID == videoID {
+			return nil, fmt.Errorf("a task is already processing video %s", videoID)
+		}
+	}
+
+	if all, err := tm.storage.GetAllTasks(); err == nil {
+		for _, existing := range all {
+			if existing.VideoID == videoID {
+				return nil, fmt.Errorf("video %s has already been processed by task %s", videoID, existing.ID)
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("failed to validate existing tasks: %w", err)
 	}
 
 	task := &types.Task{
@@ -42,6 +60,20 @@ func (tm *TaskManager) CreateTask(url string, sourceLang string) (*types.Task, e
 		Progress:   0,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
+		VideoID:    videoID,
+		Title:      title,
+		Channel:    channel,
+		Duration:   duration,
+		Thumbnail:  thumbnail,
+	}
+
+	task.WorkDir = tm.storage.GetTaskDir(title, videoID, task.ID)
+	if err := os.MkdirAll(task.WorkDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create task workspace: %w", err)
+	}
+
+	if err := tm.storage.SaveMetadata(task); err != nil {
+		return nil, fmt.Errorf("failed to persist task metadata: %w", err)
 	}
 
 	tm.tasks[task.ID] = task
@@ -166,15 +198,56 @@ func (tm *TaskManager) UpdateTaskMetadata(taskID, videoID, title, channel, durat
 		return fmt.Errorf("task %s not found", taskID)
 	}
 
-	task.VideoID = videoID
-	task.Title = title
-	task.Channel = channel
-	task.Duration = duration
-	task.Thumbnail = thumbnail
+	if videoID != "" && task.VideoID != videoID {
+		for id, existing := range tm.tasks {
+			if id == taskID {
+				continue
+			}
+			if existing.VideoID == videoID {
+				return fmt.Errorf("video %s is already being processed by task %s", videoID, existing.ID)
+			}
+		}
+
+		if all, err := tm.storage.GetAllTasks(); err == nil {
+			for _, existing := range all {
+				if existing.ID == taskID {
+					continue
+				}
+				if existing.VideoID == videoID {
+					return fmt.Errorf("video %s has already been processed by task %s", videoID, existing.ID)
+				}
+			}
+		} else {
+			return fmt.Errorf("failed to validate existing tasks: %w", err)
+		}
+
+		task.VideoID = videoID
+	}
+
+	if title != "" {
+		task.Title = title
+	}
+	if channel != "" {
+		task.Channel = channel
+	}
+	if duration != "" {
+		task.Duration = duration
+	}
+	if thumbnail != "" {
+		task.Thumbnail = thumbnail
+	}
 	task.UpdatedAt = time.Now()
 
 	if task.WorkDir == "" {
-		task.WorkDir = tm.storage.GetTaskDir(title, videoID, task.ID)
+		targetDir := tm.storage.GetTaskDir(task.Title, task.VideoID, task.ID)
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			return fmt.Errorf("failed to create work directory: %w", err)
+		}
+		task.WorkDir = targetDir
+	}
+
+	if err := tm.storage.SaveMetadata(task); err != nil {
+		return fmt.Errorf("failed to persist task metadata: %w", err)
 	}
 
 	return nil

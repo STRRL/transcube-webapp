@@ -191,8 +191,28 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, error) {
 	a.logger.Info("Starting new transcription task", "url", url, "sourceLang", sourceLang)
 
+	info, err := a.downloader.GetVideoInfo(url)
+	if err != nil {
+		a.logger.Error("Failed to fetch metadata before creating task", "url", url, "error", err)
+		return nil, err
+	}
+	if info.ID == "" {
+		return nil, fmt.Errorf("video ID is missing from metadata")
+	}
+
+	duration := time.Duration(info.Duration) * time.Second
+	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
+
 	// Create new task
-	task, err := a.taskManager.CreateTask(url, sourceLang)
+	task, err := a.taskManager.CreateTask(
+		url,
+		sourceLang,
+		info.ID,
+		info.Title,
+		info.Channel,
+		durationStr,
+		info.Thumbnail,
+	)
 	if err != nil {
 		a.logger.Error("Failed to create task", "error", err)
 		return nil, err
@@ -206,16 +226,7 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	return task, nil
 }
 
-// GetTask returns the task by ID, falling back to persisted metadata if needed
-func (a *App) GetTask(taskID string) (*types.Task, error) {
-	if taskID == "" {
-		return nil, fmt.Errorf("taskID is required")
-	}
-
-	if task, err := a.taskManager.GetTask(taskID); err == nil {
-		return task, nil
-	}
-
+func (a *App) loadTaskFromDisk(taskID string) (*types.Task, error) {
 	tasks, err := a.storage.GetAllTasks()
 	if err != nil {
 		return nil, err
@@ -230,6 +241,15 @@ func (a *App) GetTask(taskID string) (*types.Task, error) {
 	return nil, fmt.Errorf("task %s not found", taskID)
 }
 
+// GetTask returns the task by ID, loading it from persisted metadata
+func (a *App) GetTask(taskID string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+
+	return a.loadTaskFromDisk(taskID)
+}
+
 // ListActiveTasks returns all tasks currently managed in memory
 func (a *App) ListActiveTasks() []*types.Task {
 	return a.taskManager.ListTasks()
@@ -242,25 +262,16 @@ func (a *App) ensureTaskLoaded(taskID string) (*types.Task, error) {
 		return nil, fmt.Errorf("taskID is required")
 	}
 
-	if task, err := a.taskManager.GetTask(taskID); err == nil {
-		return task, nil
-	}
-
-	tasks, err := a.storage.GetAllTasks()
+	task, err := a.loadTaskFromDisk(taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, t := range tasks {
-		if t.ID == taskID {
-			if _, err := a.taskManager.UpsertTask(t); err != nil {
-				return nil, err
-			}
-			return a.taskManager.GetTask(taskID)
-		}
+	if _, err := a.taskManager.UpsertTask(task); err != nil {
+		return nil, err
 	}
 
-	return nil, fmt.Errorf("task %s not found", taskID)
+	return a.taskManager.GetTask(taskID)
 }
 
 // RetryTask retries a failed task

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Clock, Plus, Trash2 } from 'lucide-react'
+import { Clock, Plus, Trash2, RefreshCcw, Loader2 } from 'lucide-react'
 import { GetAllTasks, DeleteTask, ListActiveTasks } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 
@@ -29,6 +29,9 @@ export default function HomePage() {
   const [deleting, setDeleting] = useState(false)
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null)
   const [activeTasks, setActiveTasks] = useState<any[]>([])
+  const [refreshing, setRefreshing] = useState(false)
+  const [pollMs, setPollMs] = useState(1500)
+  const idleRoundsRef = useRef(0)
 
   const isActiveStatus = useCallback(
     (status: string | undefined) =>
@@ -63,15 +66,29 @@ export default function HomePage() {
     }
   }, [])
 
+  const adjustPollingCadence = useCallback((activeCount: number) => {
+    if (activeCount > 0) {
+      idleRoundsRef.current = 0
+      setPollMs(1500)
+      return
+    }
+
+    idleRoundsRef.current = Math.min(idleRoundsRef.current + 1, 3)
+    const schedule = [10000, 30000, 60000]
+    const idx = Math.min(idleRoundsRef.current - 1, schedule.length - 1)
+    setPollMs(schedule[idx])
+  }, [])
+
   const loadActiveTasks = useCallback(async () => {
     try {
       const tasks = await ListActiveTasks()
       const running = (tasks || []).filter((task) => isActiveStatus(task.status))
       setActiveTasks(running)
+      adjustPollingCadence(running.length)
     } catch (err) {
       console.error('Failed to refresh active tasks:', err)
     }
-  }, [isActiveStatus])
+  }, [adjustPollingCadence, isActiveStatus])
 
   useEffect(() => {
     loadTasks()
@@ -97,15 +114,26 @@ export default function HomePage() {
   }, [location])
 
   useEffect(() => {
-    const interval = activeTasks.length > 0 ? 1500 : 10000
-    const intervalId = setInterval(() => {
+    const id = setInterval(() => {
       loadActiveTasks()
-    }, interval)
+    }, pollMs)
 
-    return () => {
-      clearInterval(intervalId)
+    return () => clearInterval(id)
+  }, [pollMs, loadActiveTasks])
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshing(true)
+    setLoading(true)
+    idleRoundsRef.current = 0
+    setPollMs(1500)
+    try {
+      await Promise.all([loadTasks(), loadActiveTasks()])
+    } catch (err) {
+      console.error('Manual refresh failed:', err)
+    } finally {
+      setRefreshing(false)
     }
-  }, [activeTasks.length, loadActiveTasks])
+  }, [loadActiveTasks, loadTasks])
 
   const confirmDelete = async () => {
     if (!videoToDelete) return
@@ -189,10 +217,25 @@ export default function HomePage() {
               : `Active ${activeTasks.length} · Completed ${processedVideos.length} · Showing ${filteredTasks.length}`}
           </p>
         </div>
-        <Button onClick={() => navigate('/new')}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Transcription
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="mr-2 h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+          <Button onClick={() => navigate('/new')}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Transcription
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
