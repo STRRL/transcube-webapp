@@ -36,6 +36,9 @@ export default function TaskPage() {
   const [subtitles, setSubtitles] = useState<any[]>([])
   const [transcriptSubtitles, setTranscriptSubtitles] = useState<main.SubtitleEntry[]>([])
   const [summary, setSummary] = useState<StructuredSummary | null>(null)
+  const [postContent, setPostContent] = useState<string | null>(null)
+  const [postStatus, setPostStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [postError, setPostError] = useState<string | null>(null)
   const videoPlayerRef = useRef<VideoPlayerHandle | null>(null)
 
   useEffect(() => {
@@ -44,13 +47,16 @@ export default function TaskPage() {
 
   const loadTask = async () => {
     if (!taskId) return
-    
+
     try {
+      setPostStatus('idle')
+      setPostContent(null)
+      setPostError(null)
       const tasks = await GetAllTasks()
       const task = tasks.find(t => t.id === taskId)
       if (task) {
         setVideo(task)
-        
+
         // Load video file if task is completed
         if (task.status === 'done') {
           try {
@@ -111,7 +117,7 @@ export default function TaskPage() {
               src: `/media/${task.id}/${sub.file}`,
               label: sub.label,
               language: sub.lang,
-              default: index === 0  // 第一个字幕轨道设为默认
+              default: index === 0  // Set the first subtitle track as default
             }))
             setSubtitles(loadedSubs)
           } catch (err) {
@@ -135,6 +141,29 @@ export default function TaskPage() {
             }
           } catch (err) {
             console.error('Failed to load summary:', err)
+          }
+
+          // Load generated post article if available
+          try {
+            setPostStatus('loading')
+            const res = await fetch(`/media/${task.id}/post_article.md`)
+            if (res.ok) {
+              const text = await res.text()
+              setPostContent(text)
+              setPostStatus('success')
+              setPostError(null)
+            } else if (res.status === 404) {
+              setPostStatus('success')
+              setPostContent(null)
+              setPostError(null)
+            } else {
+              setPostStatus('error')
+              setPostError(`Unable to load article: ${res.status} ${res.statusText}`)
+            }
+          } catch (err) {
+            console.error('Failed to load post article:', err)
+            setPostStatus('error')
+            setPostError('Failed to load article content')
           }
         }
       }
@@ -284,6 +313,7 @@ export default function TaskPage() {
               <TabsList>
                 <TabsTrigger value="about">About</TabsTrigger>
                 <TabsTrigger value="summary">Summary</TabsTrigger>
+                <TabsTrigger value="post">Post</TabsTrigger>
                 <TabsTrigger value="transcript">Transcript</TabsTrigger>
               </TabsList>
 
@@ -354,6 +384,26 @@ export default function TaskPage() {
                     <div className="text-sm text-muted-foreground">Summary will be available after processing completes.</div>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="post" className="space-y-4">
+                {video.status === 'done' ? (
+                  postStatus === 'loading' ? (
+                    <div className="text-sm text-muted-foreground">Loading article...</div>
+                  ) : postStatus === 'error' ? (
+                    <div className="space-y-2 text-sm text-destructive">
+                      <p>{postError || 'Article not available.'}</p>
+                    </div>
+                  ) : postContent ? (
+                    <div className="rounded-xl bg-muted/40 p-5 text-base leading-relaxed whitespace-pre-wrap">
+                      {postContent}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">Article is not available yet.</div>
+                  )
+                ) : (
+                  <div className="text-sm text-muted-foreground">Article will be available after processing completes.</div>
+                )}
               </TabsContent>
 
               <TabsContent value="transcript" className="space-y-4">

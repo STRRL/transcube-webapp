@@ -517,6 +517,31 @@ func (a *App) processTask(task *types.Task) {
 		}
 	}
 
+	// Generate long-form post article using the structured prompt
+	videoURL := task.URL
+	if videoURL == "" && task.VideoID != "" {
+		videoURL = "https://youtube.com/watch?v=" + task.VideoID
+	}
+	postBytes, postErr := a.summarizer.GeneratePostArticle(a.ctx, a.settings.APIKey, string(srtBytes), task.Title, task.Channel, videoURL, a.settings.Temperature, a.settings.MaxTokens)
+	postPath := fmt.Sprintf("%s/post_article.md", workDir)
+	if postErr != nil {
+		a.logger.Error("Post generation failed", "taskId", task.ID, "error", postErr)
+		_ = a.storage.SaveLog(workDir, "post", fmt.Sprintf("Post generation failed: %v", postErr))
+		placeholder := fmt.Sprintf("Article generation failed: %v\n", postErr)
+		if werr := os.WriteFile(postPath, []byte(placeholder), 0644); werr != nil {
+			a.logger.Error("Failed to write placeholder post", "taskId", task.ID, "error", werr)
+		}
+	} else {
+		content := strings.TrimSpace(string(postBytes)) + "\n"
+		if werr := os.WriteFile(postPath, []byte(content), 0644); werr != nil {
+			a.logger.Error("Failed to write post article", "taskId", task.ID, "error", werr)
+			_ = a.storage.SaveLog(workDir, "post", fmt.Sprintf("Failed to write post article: %v", werr))
+		} else {
+			_ = a.storage.SaveLog(workDir, "post", "Post article generated via OpenRouter")
+			a.logger.Info("Post article generated", "taskId", task.ID, "path", postPath)
+		}
+	}
+
 	// Mark as done
 	a.taskManager.UpdateTaskStatus(types.TaskStatusDone, 100)
 	a.emitReloadEvent()
