@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Clock, Plus, Trash2, RefreshCcw, Loader2 } from 'lucide-react'
-import { GetAllTasks, DeleteTask, ListActiveTasks } from '../../wailsjs/go/main/App'
+import { GetAllTasks, DeleteTask, ListActiveTasks, RetryTask } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export default function HomePage() {
@@ -32,6 +32,7 @@ export default function HomePage() {
   const [refreshing, setRefreshing] = useState(false)
   const [pollMs, setPollMs] = useState(1500)
   const idleRoundsRef = useRef(0)
+  const [retryingTasks, setRetryingTasks] = useState<Record<string, boolean>>({})
 
   const isActiveStatus = useCallback(
     (status: string | undefined) =>
@@ -157,6 +158,23 @@ export default function HomePage() {
       setDeleting(false)
     }
   }
+
+  const handleRetry = useCallback(async (taskId: string) => {
+    setRetryingTasks((prev) => ({ ...prev, [taskId]: true }))
+    try {
+      await RetryTask(taskId)
+      await Promise.all([loadTasks(), loadActiveTasks()])
+    } catch (err) {
+      console.error('Retry failed:', err)
+      const message = err instanceof Error ? err.message : 'Failed to retry task'
+      alert(message)
+    } finally {
+      setRetryingTasks((prev) => {
+        const { [taskId]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+  }, [loadActiveTasks, loadTasks])
 
   const combinedTasks = useMemo(() => {
     const tasks = [...activeTasks, ...processedVideos]
@@ -348,10 +366,31 @@ export default function HomePage() {
                     </p>
                   </div>
 
-                  {task.status === 'failed' && task.error && (
-                    <p className="text-xs text-destructive leading-relaxed">
-                      Error: {task.error}
-                    </p>
+                  {task.status === 'failed' && (
+                    <div className="space-y-2">
+                      {task.error && (
+                        <p className="text-xs text-destructive leading-relaxed">
+                          Error: {task.error}
+                        </p>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-fit"
+                        onClick={() => handleRetry(task.id)}
+                        disabled={!!retryingTasks[task.id]}
+                        type="button"
+                      >
+                        {retryingTasks[task.id] ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Retrying…
+                          </>
+                        ) : (
+                          'Retry'
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>

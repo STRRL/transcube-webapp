@@ -27,6 +27,11 @@ const (
 	ProgressTaskComplete       = 100
 )
 
+const (
+	defaultWindowWidth  = 3464
+	defaultWindowHeight = 2200
+)
+
 // App struct
 type App struct {
 	ctx           context.Context
@@ -80,6 +85,10 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.logger.Info("TransCube starting up")
+
+	if err := runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight); err != nil {
+		a.logger.Warn("Failed to set window size", "error", err)
+	}
 
 	// Log environment info for debugging
 	pathFinder := utils.NewPathFinder()
@@ -289,6 +298,14 @@ func (a *App) ensureTaskLoaded(taskID string) (*types.Task, error) {
 
 // RetryTask retries a failed task
 func (a *App) RetryTask(taskID string) (*types.Task, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("taskID is required")
+	}
+
+	if _, err := a.ensureTaskLoaded(taskID); err != nil {
+		return nil, err
+	}
+
 	task, err := a.taskManager.RetryTask(taskID)
 	if err != nil {
 		return nil, err
@@ -297,6 +314,7 @@ func (a *App) RetryTask(taskID string) (*types.Task, error) {
 	a.logger.Info("Retrying task", "taskId", taskID)
 
 	go a.processTask(taskID)
+	a.emitReloadEvent()
 
 	return task, nil
 }
