@@ -86,9 +86,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.logger.Info("TransCube starting up")
 
-	if err := runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight); err != nil {
-		a.logger.Warn("Failed to set window size", "error", err)
-	}
+	runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight)
 
 	// Log environment info for debugging
 	pathFinder := utils.NewPathFinder()
@@ -161,7 +159,12 @@ func (a *App) UpdateSettings(settings types.Settings) types.Settings {
 	return a.settings
 }
 
-// ParseVideoUrl parses a YouTube URL and returns video metadata
+// DetectPlatform detects which video platform the URL belongs to
+func (a *App) DetectPlatform(url string) string {
+	return a.downloader.DetectPlatform(url)
+}
+
+// ParseVideoUrl parses a video URL and returns video metadata
 func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 	a.logger.Debug("Parsing video URL", "url", url)
 
@@ -195,6 +198,11 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 		"likes", info.LikeCount,
 		"publishedAt", publishedAt)
 
+	thumbnail := info.Thumbnail
+	if strings.HasPrefix(thumbnail, "http://") {
+		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
+	}
+
 	return &types.VideoMetadata{
 		ID:          info.ID,
 		Title:       info.Title,
@@ -202,7 +210,7 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 		ChannelID:   info.ChannelID,
 		Duration:    int(info.Duration),
 		PublishedAt: publishedAt,
-		Thumbnail:   info.Thumbnail,
+		Thumbnail:   thumbnail,
 		ViewCount:   info.ViewCount,
 		LikeCount:   info.LikeCount,
 		Description: info.Description,
@@ -225,7 +233,11 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	// Create new task
+	thumbnail := info.Thumbnail
+	if strings.HasPrefix(thumbnail, "http://") {
+		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
+	}
+
 	task, err := a.taskManager.CreateTask(
 		url,
 		sourceLang,
@@ -233,7 +245,7 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 		info.Title,
 		info.Channel,
 		durationStr,
-		info.Thumbnail,
+		thumbnail,
 	)
 	if err != nil {
 		a.logger.Error("Failed to create task", "error", err)
@@ -371,7 +383,12 @@ func (a *App) downloadTaskInternal(taskID string) (*types.Task, error) {
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, info.Thumbnail); err != nil {
+	thumbnail := info.Thumbnail
+	if strings.HasPrefix(thumbnail, "http://") {
+		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
+	}
+
+	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, thumbnail); err != nil {
 		a.recordTaskError(taskID, err, "Failed to update metadata")
 		return nil, err
 	}

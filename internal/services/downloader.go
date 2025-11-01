@@ -169,15 +169,36 @@ func (d *Downloader) parseError(err error) error {
 	return fmt.Errorf("download failed: %v", err)
 }
 
-// ExtractVideoID extracts the video ID from a YouTube URL
-func (d *Downloader) ExtractVideoID(url string) string {
-	patterns := []string{
-		`(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)`,
-		`^([^&\n?#]+)$`,
+// DetectPlatform detects which video platform the URL belongs to
+func (d *Downloader) DetectPlatform(url string) string {
+	if strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be") {
+		return "youtube"
 	}
+	if strings.Contains(url, "bilibili.com") {
+		return "bilibili"
+	}
+	return "unknown"
+}
 
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+// ExtractVideoID extracts the video ID from a video URL
+func (d *Downloader) ExtractVideoID(url string) string {
+	platform := d.DetectPlatform(url)
+
+	switch platform {
+	case "youtube":
+		patterns := []string{
+			`(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)`,
+			`^([^&\n?#]+)$`,
+		}
+		for _, pattern := range patterns {
+			re := regexp.MustCompile(pattern)
+			if match := re.FindStringSubmatch(url); len(match) > 1 {
+				return match[1]
+			}
+		}
+
+	case "bilibili":
+		re := regexp.MustCompile(`(BV[a-zA-Z0-9]+)`)
 		if match := re.FindStringSubmatch(url); len(match) > 1 {
 			return match[1]
 		}

@@ -10,6 +10,10 @@ export function DeleteTask(arg1) {
   return window['go']['main']['App']['DeleteTask'](arg1);
 }
 
+export function DetectPlatform(arg1) {
+  return window['go']['main']['App']['DetectPlatform'](arg1);
+}
+
 export function DownloadTask(arg1) {
   return window['go']['main']['App']['DownloadTask'](arg1);
 }

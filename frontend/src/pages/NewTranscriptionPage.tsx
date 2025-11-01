@@ -7,7 +7,7 @@ import { AlertCircle, ChevronLeft, Download } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
-import { CheckDependencies, StartTranscription, GetTask } from '../../wailsjs/go/main/App'
+import { CheckDependencies, StartTranscription, GetTask, DetectPlatform } from '../../wailsjs/go/main/App'
 
 export default function NewTranscriptionPage() {
   const navigate = useNavigate()
@@ -15,14 +15,15 @@ export default function NewTranscriptionPage() {
   const [error, setError] = useState('')
   const [sourceLang, setSourceLang] = useState('en')
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null)
-  
+  const [platform, setPlatform] = useState<string>('unknown')
+
   // Task processing state
   const [isProcessing, setIsProcessing] = useState(false)
   const [taskStage, setTaskStage] = useState<TaskStage>('pending')
   const [taskProgress, setTaskProgress] = useState(0)
   const [taskDetail, setTaskDetail] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('')
-  
+
   const [dependencies, setDependencies] = useState({
     ytdlp: false,
     ffmpeg: false,
@@ -39,6 +40,46 @@ export default function NewTranscriptionPage() {
       return () => clearInterval(interval)
     }
   }, [isProcessing, currentTaskId])
+
+  useEffect(() => {
+    const detectUrlPlatform = async () => {
+      if (url.trim()) {
+        try {
+          const detected = await DetectPlatform(url)
+          setPlatform(detected)
+        } catch (err) {
+          console.error('Failed to detect platform:', err)
+          setPlatform('unknown')
+        }
+      } else {
+        setPlatform('unknown')
+      }
+    }
+    detectUrlPlatform()
+  }, [url])
+
+  const getPlatformText = () => {
+    switch (platform) {
+      case 'youtube':
+        return {
+          label: 'YouTube URL',
+          placeholder: 'https://youtube.com/watch?v=... or video ID',
+          description: 'Download and process a YouTube video with AI-powered transcription and translation'
+        }
+      case 'bilibili':
+        return {
+          label: 'Bilibili URL',
+          placeholder: 'https://www.bilibili.com/video/BV...',
+          description: 'Download and process a Bilibili video with AI-powered transcription and translation'
+        }
+      default:
+        return {
+          label: 'Video URL',
+          placeholder: 'https://... (YouTube, Bilibili, etc.)',
+          description: 'Download and process a video with AI-powered transcription and translation'
+        }
+    }
+  }
 
   const checkDependencies = async () => {
     try {
@@ -102,14 +143,14 @@ export default function NewTranscriptionPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!url.trim()) {
-      setError('Please enter a YouTube URL')
+      setError(`Please enter a ${getPlatformText().label.toLowerCase()}`)
       return
     }
 
     if (!videoMetadata || !videoMetadata.isValid) {
-      setError('Please enter a valid YouTube URL')
+      setError(`Please enter a valid ${getPlatformText().label.toLowerCase()}`)
       return
     }
 
@@ -139,7 +180,7 @@ export default function NewTranscriptionPage() {
         
         <h1 className="text-2xl font-semibold mb-2">New Transcription</h1>
         <p className="text-muted-foreground">
-          Download and process a YouTube video with AI-powered transcription and translation
+          {getPlatformText().description}
         </p>
       </div>
 
@@ -148,15 +189,15 @@ export default function NewTranscriptionPage() {
         <CardHeader>
           <CardTitle>Video Details</CardTitle>
           <CardDescription>
-            Enter the YouTube URL to start processing
+            Enter the video URL to start processing
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">YouTube URL</label>
+              <label className="text-sm font-medium">{getPlatformText().label}</label>
               <Input
-                placeholder="https://youtube.com/watch?v=... or video ID"
+                placeholder={getPlatformText().placeholder}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={isProcessing}
