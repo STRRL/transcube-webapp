@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"strings"
@@ -144,7 +145,9 @@ func (a *App) GetSettings() types.Settings {
 func (a *App) UpdateSettings(settings types.Settings) types.Settings {
 	if settings.Workspace != "" {
 		a.storage.SetWorkspace(settings.Workspace)
-		a.storage.EnsureWorkspace()
+		if err := a.storage.EnsureWorkspace(); err != nil {
+			log.Printf("ensure workspace: %v", err)
+		}
 	}
 	// store in memory (could be persisted later)
 	a.settings = settings
@@ -711,7 +714,9 @@ func parseSRT(content string) []SubtitleEntry {
 
 		// Parse index
 		index := 0
-		fmt.Sscanf(lines[i], "%d", &index)
+		if _, err := fmt.Sscanf(lines[i], "%d", &index); err != nil {
+			log.Printf("parse subtitle index: %v", err)
+		}
 		i++
 
 		if i >= len(lines) {

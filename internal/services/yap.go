@@ -46,7 +46,9 @@ func (y *YapRunner) Transcribe(audioPath string, outputDir string, language stri
 			"output", string(output),
 			"audioPath", audioPath)
 		// Log the error
-		y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Transcription failed: %s", string(output)))
+		if logErr := y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Transcription failed: %s", string(output))); logErr != nil {
+			slog.Warn("save transcription log", "error", logErr)
+		}
 		return fmt.Errorf("transcription failed: %v", err)
 	}
 
@@ -61,7 +63,9 @@ func (y *YapRunner) Transcribe(audioPath string, outputDir string, language stri
 		"language", language)
 
 	// Log success
-	y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Transcription completed for language: %s", language))
+	if logErr := y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Transcription completed for language: %s", language)); logErr != nil {
+		slog.Warn("save transcription log", "error", logErr)
+	}
 
 	return nil
 }

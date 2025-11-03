@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"transcube-webapp/internal/types"
@@ -33,7 +34,11 @@ func (s *SettingsStore) Load() (*types.Settings, error) {
 		}
 		return nil, fmt.Errorf("open settings: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("close settings file: %v", err)
+		}
+	}()
 	var st types.Settings
 	if err := json.NewDecoder(f).Decode(&st); err != nil {
 		return nil, fmt.Errorf("decode settings: %w", err)
@@ -50,7 +55,9 @@ func (s *SettingsStore) Save(st types.Settings) error {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(st); err != nil {
-		f.Close()
+		if closeErr := f.Close(); closeErr != nil {
+			log.Printf("close temp settings file: %v", closeErr)
+		}
 		return fmt.Errorf("encode settings: %w", err)
 	}
 	if err := f.Close(); err != nil {

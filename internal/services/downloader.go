@@ -105,13 +105,17 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 	output, err := cmdMp4.CombinedOutput()
 	if err == nil {
 		slog.Info("Video downloaded successfully (mp4)", "outputDir", outputDir)
-		d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)")
+		if logErr := d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)"); logErr != nil {
+			slog.Warn("save download log", "error", logErr)
+		}
 		return nil
 	}
 
 	// Fallback: WebM (more permissive for VP9/Opus)
 	slog.Warn("MP4 download failed; attempting WebM fallback", "error", err)
-	d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
+	if logErr := d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output)); logErr != nil {
+		slog.Warn("save download log", "error", logErr)
+	}
 
 	webmPath := filepath.Join(outputDir, "video.webm")
 	cmdWebm := exec.Command(ytDlpPath,
@@ -126,12 +130,16 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 	output2, err2 := cmdWebm.CombinedOutput()
 	if err2 != nil {
 		slog.Error("Video download failed (webm fallback)", "error", err2, "output", string(output2))
-		d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2))
+		if logErr := d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2)); logErr != nil {
+			slog.Warn("save download log", "error", logErr)
+		}
 		return d.parseError(err2)
 	}
 
 	slog.Info("Video downloaded successfully (webm)", "outputDir", outputDir)
-	d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)")
+	if logErr := d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)"); logErr != nil {
+		slog.Warn("save download log", "error", logErr)
+	}
 	return nil
 }
 
