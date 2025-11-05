@@ -3,7 +3,7 @@ package services
 import (
 	"bytes"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -84,7 +84,7 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			defer func() {
 				if err := srtFile.Close(); err != nil {
-					log.Printf("close subtitle file: %v", err)
+					slog.Error("close subtitle file", "error", err)
 				}
 			}()
 
@@ -99,7 +99,7 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			if _, err := io.Copy(w, &vttBuffer); err != nil {
-				log.Printf("write VTT content: %v", err)
+				slog.Error("write VTT content", "error", err)
 			}
 			return
 		}
@@ -122,7 +122,7 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
-			log.Printf("close file: %v", err)
+			slog.Error("close file", "error", err)
 		}
 	}()
 
@@ -148,16 +148,16 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If conversion fails, serve as plain text
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			if _, seekErr := file.Seek(0, 0); seekErr != nil {
-				log.Printf("seek file: %v", seekErr)
+				slog.Error("seek file", "error", seekErr)
 			}
 			if _, copyErr := io.Copy(w, file); copyErr != nil {
-				log.Printf("copy file content: %v", copyErr)
+				slog.Error("copy file content", "error", copyErr)
 			}
 			return
 		}
 		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 		if _, err := io.Copy(w, &vttBuffer); err != nil {
-			log.Printf("write VTT content: %v", err)
+			slog.Error("write VTT content", "error", err)
 		}
 		return
 	case ".aac", ".m4a":

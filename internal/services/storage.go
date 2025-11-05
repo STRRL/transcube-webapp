@@ -3,7 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -151,7 +151,7 @@ func (s *Storage) SaveLog(taskDir string, logType string, content string) error 
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			log.Printf("close log file: %v", err)
+			slog.Error("close log file", "error", err)
 		}
 	}()
 

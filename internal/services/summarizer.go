@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -157,7 +157,7 @@ func (c *OpenRouterClient) SummarizeStructured(ctx context.Context, apiKey strin
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("close response body: %v", err)
+			slog.Error("close response body", "error", err)
 		}
 	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
