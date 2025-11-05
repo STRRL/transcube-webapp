@@ -8,10 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
 import { CheckDependencies, StartTranscription, GetTask, DetectPlatform } from '../../wailsjs/go/main/App'
+import { useDebounce } from '@/hooks'
 
 export default function NewTranscriptionPage() {
   const navigate = useNavigate()
   const [url, setUrl] = useState('')
+  const debouncedUrl = useDebounce(url, 300)
   const [error, setError] = useState('')
   const [sourceLang, setSourceLang] = useState('en')
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null)
@@ -42,21 +44,32 @@ export default function NewTranscriptionPage() {
   }, [isProcessing, currentTaskId])
 
   useEffect(() => {
+    let isCurrent = true
+
     const detectUrlPlatform = async () => {
-      if (url.trim()) {
+      if (debouncedUrl.trim()) {
         try {
-          const detected = await DetectPlatform(url)
-          setPlatform(detected)
+          const detected = await DetectPlatform(debouncedUrl)
+          if (isCurrent) {
+            setPlatform(detected)
+          }
         } catch (err) {
-          console.error('Failed to detect platform:', err)
-          setPlatform('unknown')
+          if (isCurrent) {
+            console.error('Failed to detect platform:', err)
+            setPlatform('unknown')
+          }
         }
       } else {
         setPlatform('unknown')
       }
     }
+
     detectUrlPlatform()
-  }, [url])
+
+    return () => {
+      isCurrent = false
+    }
+  }, [debouncedUrl])
 
   const getPlatformText = () => {
     switch (platform) {
