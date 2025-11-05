@@ -19,6 +19,7 @@ const (
 type Task struct {
 	ID          string     `json:"id"`
 	URL         string     `json:"url"`
+	Platform    string     `json:"platform"`
 	VideoID     string     `json:"videoId"`
 	Title       string     `json:"title"`
 	Channel     string     `json:"channel"`
@@ -34,9 +35,10 @@ type Task struct {
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 }
 
-// VideoMetadata contains information about a YouTube video
+// VideoMetadata contains information about a video from various platforms
 type VideoMetadata struct {
 	ID          string `json:"id"`
+	Platform    string `json:"platform"`
 	Title       string `json:"title"`
 	Channel     string `json:"channel"`
 	ChannelID   string `json:"channelId"`

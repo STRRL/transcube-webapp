@@ -200,19 +200,17 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 		"likes", info.LikeCount,
 		"publishedAt", publishedAt)
 
-	thumbnail := info.Thumbnail
-	if strings.HasPrefix(thumbnail, "http://") {
-		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
-	}
+	platform := a.downloader.DetectPlatform(url)
 
 	return &types.VideoMetadata{
 		ID:          info.ID,
+		Platform:    platform,
 		Title:       info.Title,
 		Channel:     info.Channel,
 		ChannelID:   info.ChannelID,
 		Duration:    int(info.Duration),
 		PublishedAt: publishedAt,
-		Thumbnail:   thumbnail,
+		Thumbnail:   utils.EnsureHTTPS(info.Thumbnail),
 		ViewCount:   info.ViewCount,
 		LikeCount:   info.LikeCount,
 		Description: info.Description,
@@ -235,19 +233,17 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	thumbnail := info.Thumbnail
-	if strings.HasPrefix(thumbnail, "http://") {
-		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
-	}
+	platform := a.downloader.DetectPlatform(url)
 
 	task, err := a.taskManager.CreateTask(
 		url,
 		sourceLang,
+		platform,
 		info.ID,
 		info.Title,
 		info.Channel,
 		durationStr,
-		thumbnail,
+		utils.EnsureHTTPS(info.Thumbnail),
 	)
 	if err != nil {
 		a.logger.Error("Failed to create task", "error", err)
@@ -385,12 +381,7 @@ func (a *App) downloadTaskInternal(taskID string) (*types.Task, error) {
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	thumbnail := info.Thumbnail
-	if strings.HasPrefix(thumbnail, "http://") {
-		thumbnail = strings.Replace(thumbnail, "http://", "https://", 1)
-	}
-
-	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, thumbnail); err != nil {
+	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, utils.EnsureHTTPS(info.Thumbnail)); err != nil {
 		a.recordTaskError(taskID, err, "Failed to update metadata")
 		return nil, err
 	}

@@ -9,18 +9,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"transcube-webapp/internal/platform"
 	"transcube-webapp/internal/utils"
 )
 
 type Downloader struct {
-	storage    *Storage
-	pathFinder *utils.PathFinder
+	storage          *Storage
+	pathFinder       *utils.PathFinder
+	platformRegistry *platform.Registry
 }
 
 func NewDownloader(storage *Storage) *Downloader {
 	return &Downloader{
-		storage:    storage,
-		pathFinder: utils.NewPathFinder(),
+		storage:          storage,
+		pathFinder:       utils.NewPathFinder(),
+		platformRegistry: platform.NewRegistry(),
 	}
 }
 
@@ -179,40 +182,12 @@ func (d *Downloader) parseError(err error) error {
 
 // DetectPlatform detects which video platform the URL belongs to
 func (d *Downloader) DetectPlatform(url string) string {
-	if strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be") {
-		return "youtube"
-	}
-	if strings.Contains(url, "bilibili.com") {
-		return "bilibili"
-	}
-	return "unknown"
+	return d.platformRegistry.DetectPlatformName(url)
 }
 
 // ExtractVideoID extracts the video ID from a video URL
 func (d *Downloader) ExtractVideoID(url string) string {
-	platform := d.DetectPlatform(url)
-
-	switch platform {
-	case "youtube":
-		patterns := []string{
-			`(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)`,
-			`^([^&\n?#]+)$`,
-		}
-		for _, pattern := range patterns {
-			re := regexp.MustCompile(pattern)
-			if match := re.FindStringSubmatch(url); len(match) > 1 {
-				return match[1]
-			}
-		}
-
-	case "bilibili":
-		re := regexp.MustCompile(`(BV[a-zA-Z0-9]+)`)
-		if match := re.FindStringSubmatch(url); len(match) > 1 {
-			return match[1]
-		}
-	}
-
-	return ""
+	return d.platformRegistry.ExtractVideoID(url)
 }
 
 // ExtractAudio extracts audio from video file for transcription
