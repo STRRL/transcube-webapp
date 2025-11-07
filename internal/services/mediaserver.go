@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -81,7 +82,11 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Failed to open subtitle file", http.StatusInternalServerError)
 				return
 			}
-			defer srtFile.Close()
+			defer func() {
+				if err := srtFile.Close(); err != nil {
+					slog.Error("close subtitle file", "error", err)
+				}
+			}()
 
 			// Convert SRT to VTT
 			var vttBuffer bytes.Buffer
@@ -93,7 +98,9 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Serve the converted VTT
 			w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			io.Copy(w, &vttBuffer)
+			if _, err := io.Copy(w, &vttBuffer); err != nil {
+				slog.Error("write VTT content", "error", err)
+			}
 			return
 		}
 	}
@@ -113,7 +120,11 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			slog.Error("close file", "error", err)
+		}
+	}()
 
 	// Get file info
 	stat, err := file.Stat()
@@ -136,12 +147,18 @@ func (m *MediaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := ConvertSRTToVTT(file, &vttBuffer); err != nil {
 			// If conversion fails, serve as plain text
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			file.Seek(0, 0)
-			io.Copy(w, file)
+			if _, seekErr := file.Seek(0, 0); seekErr != nil {
+				slog.Error("seek file", "error", seekErr)
+			}
+			if _, copyErr := io.Copy(w, file); copyErr != nil {
+				slog.Error("copy file content", "error", copyErr)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
-		io.Copy(w, &vttBuffer)
+		if _, err := io.Copy(w, &vttBuffer); err != nil {
+			slog.Error("write VTT content", "error", err)
+		}
 		return
 	case ".aac", ".m4a":
 		w.Header().Set("Content-Type", "audio/aac")

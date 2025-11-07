@@ -9,18 +9,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"transcube-webapp/internal/platform"
 	"transcube-webapp/internal/utils"
 )
 
 type Downloader struct {
-	storage    *Storage
-	pathFinder *utils.PathFinder
+	storage          *Storage
+	pathFinder       *utils.PathFinder
+	platformRegistry *platform.Registry
 }
 
 func NewDownloader(storage *Storage) *Downloader {
 	return &Downloader{
-		storage:    storage,
-		pathFinder: utils.NewPathFinder(),
+		storage:          storage,
+		pathFinder:       utils.NewPathFinder(),
+		platformRegistry: platform.NewRegistry(),
 	}
 }
 
@@ -105,13 +108,17 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 	output, err := cmdMp4.CombinedOutput()
 	if err == nil {
 		slog.Info("Video downloaded successfully (mp4)", "outputDir", outputDir)
-		d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)")
+		if logErr := d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (mp4)"); logErr != nil {
+			slog.Warn("save download log", "error", logErr)
+		}
 		return nil
 	}
 
 	// Fallback: WebM (more permissive for VP9/Opus)
 	slog.Warn("MP4 download failed; attempting WebM fallback", "error", err)
-	d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output))
+	if logErr := d.storage.SaveLog(outputDir, "download", "MP4 failed; attempting WebM fallback\n"+string(output)); logErr != nil {
+		slog.Warn("save download log", "error", logErr)
+	}
 
 	webmPath := filepath.Join(outputDir, "video.webm")
 	cmdWebm := exec.Command(ytDlpPath,
@@ -126,12 +133,16 @@ func (d *Downloader) DownloadVideo(url string, outputDir string) error {
 	output2, err2 := cmdWebm.CombinedOutput()
 	if err2 != nil {
 		slog.Error("Video download failed (webm fallback)", "error", err2, "output", string(output2))
-		d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2))
+		if logErr := d.storage.SaveLog(outputDir, "download", "WebM fallback failed\n"+string(output2)); logErr != nil {
+			slog.Warn("save download log", "error", logErr)
+		}
 		return d.parseError(err2)
 	}
 
 	slog.Info("Video downloaded successfully (webm)", "outputDir", outputDir)
-	d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)")
+	if logErr := d.storage.SaveLog(outputDir, "download", "Video downloaded successfully (webm)"); logErr != nil {
+		slog.Warn("save download log", "error", logErr)
+	}
 	return nil
 }
 
@@ -169,21 +180,14 @@ func (d *Downloader) parseError(err error) error {
 	return fmt.Errorf("download failed: %v", err)
 }
 
-// ExtractVideoID extracts the video ID from a YouTube URL
+// DetectPlatform detects which video platform the URL belongs to
+func (d *Downloader) DetectPlatform(url string) string {
+	return d.platformRegistry.DetectPlatformName(url)
+}
+
+// ExtractVideoID extracts the video ID from a video URL
 func (d *Downloader) ExtractVideoID(url string) string {
-	patterns := []string{
-		`(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)`,
-		`^([^&\n?#]+)$`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		if match := re.FindStringSubmatch(url); len(match) > 1 {
-			return match[1]
-		}
-	}
-
-	return ""
+	return d.platformRegistry.ExtractVideoID(url)
 }
 
 // ExtractAudio extracts audio from video file for transcription

@@ -27,7 +27,7 @@ func NewTaskManager(storage *Storage) *TaskManager {
 }
 
 // CreateTask creates a new task with pre-fetched metadata and tracks it in memory
-func (tm *TaskManager) CreateTask(url, sourceLang, videoID, title, channel, duration, thumbnail string) (*types.Task, error) {
+func (tm *TaskManager) CreateTask(url, sourceLang, platform, videoID, title, channel, duration, thumbnail string) (*types.Task, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -39,15 +39,15 @@ func (tm *TaskManager) CreateTask(url, sourceLang, videoID, title, channel, dura
 		if existing.URL == url && tm.isTaskRunning(existing.Status) {
 			return nil, fmt.Errorf("a task is already running for this url: %s", url)
 		}
-		if existing.VideoID == videoID {
-			return nil, fmt.Errorf("a task is already processing video %s", videoID)
+		if existing.Platform == platform && existing.VideoID == videoID {
+			return nil, fmt.Errorf("a task is already processing video %s on %s", videoID, platform)
 		}
 	}
 
 	if all, err := tm.storage.GetAllTasks(); err == nil {
 		for _, existing := range all {
-			if existing.VideoID == videoID {
-				return nil, fmt.Errorf("video %s has already been processed by task %s", videoID, existing.ID)
+			if existing.Platform == platform && existing.VideoID == videoID {
+				return nil, fmt.Errorf("video %s on %s has already been processed by task %s", videoID, platform, existing.ID)
 			}
 		}
 	} else {
@@ -57,6 +57,7 @@ func (tm *TaskManager) CreateTask(url, sourceLang, videoID, title, channel, dura
 	task := &types.Task{
 		ID:         uuid.New().String(),
 		URL:        url,
+		Platform:   platform,
 		SourceLang: sourceLang,
 		Status:     types.TaskStatusPending,
 		Progress:   0,

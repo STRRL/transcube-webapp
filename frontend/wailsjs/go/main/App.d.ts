@@ -7,6 +7,8 @@ export function CheckDependencies():Promise<types.DependencyStatus>;
 
 export function DeleteTask(arg1:string):Promise<void>;
 
+export function DetectPlatform(arg1:string):Promise<string>;
+
 export function DownloadTask(arg1:string):Promise<types.Task>;
 
 export function GetAllTasks():Promise<Array<types.Task>>;

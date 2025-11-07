@@ -13,8 +13,12 @@ func ConvertSRTToVTT(reader io.Reader, writer io.Writer) error {
 	scanner := bufio.NewScanner(reader)
 
 	// Write WebVTT header
-	fmt.Fprintln(writer, "WEBVTT")
-	fmt.Fprintln(writer)
+	if _, err := fmt.Fprintln(writer, "WEBVTT"); err != nil {
+		return fmt.Errorf("write WebVTT header: %w", err)
+	}
+	if _, err := fmt.Fprintln(writer); err != nil {
+		return fmt.Errorf("write WebVTT header newline: %w", err)
+	}
 
 	// SRT timestamp regex: 00:00:00,000 --> 00:00:00,000
 	timestampRegex := regexp.MustCompile(`(\d{2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}),(\d{3})`)
@@ -33,7 +37,9 @@ func ConvertSRTToVTT(reader io.Reader, writer io.Writer) error {
 			line = timestampRegex.ReplaceAllString(line, "$1.$2 --> $3.$4")
 		}
 
-		fmt.Fprintln(writer, line)
+		if _, err := fmt.Fprintln(writer, line); err != nil {
+			return fmt.Errorf("write subtitle line: %w", err)
+		}
 	}
 
 	return scanner.Err()

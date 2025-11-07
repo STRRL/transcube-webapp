@@ -86,9 +86,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.logger.Info("TransCube starting up")
 
-	if err := runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight); err != nil {
-		a.logger.Warn("Failed to set window size", "error", err)
-	}
+	runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight)
 
 	// Log environment info for debugging
 	pathFinder := utils.NewPathFinder()
@@ -146,7 +144,9 @@ func (a *App) GetSettings() types.Settings {
 func (a *App) UpdateSettings(settings types.Settings) types.Settings {
 	if settings.Workspace != "" {
 		a.storage.SetWorkspace(settings.Workspace)
-		a.storage.EnsureWorkspace()
+		if err := a.storage.EnsureWorkspace(); err != nil {
+			slog.Error("ensure workspace", "error", err)
+		}
 	}
 	// store in memory (could be persisted later)
 	a.settings = settings
@@ -161,7 +161,12 @@ func (a *App) UpdateSettings(settings types.Settings) types.Settings {
 	return a.settings
 }
 
-// ParseVideoUrl parses a YouTube URL and returns video metadata
+// DetectPlatform detects which video platform the URL belongs to
+func (a *App) DetectPlatform(url string) string {
+	return a.downloader.DetectPlatform(url)
+}
+
+// ParseVideoUrl parses a video URL and returns video metadata
 func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 	a.logger.Debug("Parsing video URL", "url", url)
 
@@ -195,14 +200,17 @@ func (a *App) ParseVideoUrl(url string) (*types.VideoMetadata, error) {
 		"likes", info.LikeCount,
 		"publishedAt", publishedAt)
 
+	platform := a.downloader.DetectPlatform(url)
+
 	return &types.VideoMetadata{
 		ID:          info.ID,
+		Platform:    platform,
 		Title:       info.Title,
 		Channel:     info.Channel,
 		ChannelID:   info.ChannelID,
 		Duration:    int(info.Duration),
 		PublishedAt: publishedAt,
-		Thumbnail:   info.Thumbnail,
+		Thumbnail:   utils.EnsureHTTPS(info.Thumbnail),
 		ViewCount:   info.ViewCount,
 		LikeCount:   info.LikeCount,
 		Description: info.Description,
@@ -225,15 +233,17 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	// Create new task
+	platform := a.downloader.DetectPlatform(url)
+
 	task, err := a.taskManager.CreateTask(
 		url,
 		sourceLang,
+		platform,
 		info.ID,
 		info.Title,
 		info.Channel,
 		durationStr,
-		info.Thumbnail,
+		utils.EnsureHTTPS(info.Thumbnail),
 	)
 	if err != nil {
 		a.logger.Error("Failed to create task", "error", err)
@@ -371,7 +381,7 @@ func (a *App) downloadTaskInternal(taskID string) (*types.Task, error) {
 	duration := time.Duration(info.Duration) * time.Second
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
-	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, info.Thumbnail); err != nil {
+	if err := a.taskManager.UpdateTaskMetadata(taskID, info.ID, info.Title, info.Channel, durationStr, utils.EnsureHTTPS(info.Thumbnail)); err != nil {
 		a.recordTaskError(taskID, err, "Failed to update metadata")
 		return nil, err
 	}
@@ -694,7 +704,9 @@ func parseSRT(content string) []SubtitleEntry {
 
 		// Parse index
 		index := 0
-		fmt.Sscanf(lines[i], "%d", &index)
+		if _, err := fmt.Sscanf(lines[i], "%d", &index); err != nil {
+			slog.Error("parse subtitle index", "error", err)
+		}
 		i++
 
 		if i >= len(lines) {

@@ -63,7 +63,10 @@ func (pf *PathFinder) initializePATH() {
 	}
 
 	newPath := strings.Join(paths, string(os.PathListSeparator))
-	os.Setenv("PATH", newPath)
+	if err := os.Setenv("PATH", newPath); err != nil {
+		slog.Warn("update PATH environment variable", "error", err)
+		return
+	}
 	slog.Info("Updated PATH", "path", newPath)
 }
 
