@@ -72,6 +72,7 @@ export namespace types {
 	export class Task {
 	    id: string;
 	    url: string;
+	    platform: string;
 	    videoId: string;
 	    title: string;
 	    channel: string;
@@ -97,6 +98,7 @@ export namespace types {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.url = source["url"];
+	        this.platform = source["platform"];
 	        this.videoId = source["videoId"];
 	        this.title = source["title"];
 	        this.channel = source["channel"];
@@ -132,6 +134,7 @@ export namespace types {
 	}
 	export class VideoMetadata {
 	    id: string;
+	    platform: string;
 	    title: string;
 	    channel: string;
 	    channelId: string;
@@ -149,6 +152,7 @@ export namespace types {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.platform = source["platform"];
 	        this.title = source["title"];
 	        this.channel = source["channel"];
 	        this.channelId = source["channelId"];
