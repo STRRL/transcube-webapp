@@ -23,7 +23,8 @@ export default function SettingsPage() {
     summaryLength: 'medium',
     summaryLanguage: 'en',
     temperature: 0.3,
-    maxTokens: 4096
+    maxTokens: 4096,
+    channelLanguagePrefs: {}
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

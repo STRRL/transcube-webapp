@@ -52,6 +52,7 @@ export namespace types {
 	    summaryLanguage: string;
 	    temperature: number;
 	    maxTokens: number;
+	    channelLanguagePrefs: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -67,6 +68,7 @@ export namespace types {
 	        this.summaryLanguage = source["summaryLanguage"];
 	        this.temperature = source["temperature"];
 	        this.maxTokens = source["maxTokens"];
+	        this.channelLanguagePrefs = source["channelLanguagePrefs"];
 	    }
 	}
 	export class Task {

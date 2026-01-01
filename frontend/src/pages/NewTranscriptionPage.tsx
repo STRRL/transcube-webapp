@@ -7,7 +7,7 @@ import { AlertCircle, ChevronLeft, Download } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import VideoPreview, { VideoMetadata } from '@/components/VideoPreview'
 import TaskProgress, { TaskStage } from '@/components/TaskProgress'
-import { CheckDependencies, StartTranscription, GetTask, DetectPlatform } from '../../wailsjs/go/main/App'
+import { CheckDependencies, StartTranscription, GetTask, DetectPlatform, GetChannelLanguagePreference } from '../../wailsjs/go/main/App'
 import { useDebounce } from '@/hooks'
 
 export default function NewTranscriptionPage() {
@@ -182,6 +182,24 @@ export default function NewTranscriptionPage() {
     startProcessing()
   }
 
+  const handleMetadataLoaded = async (metadata: VideoMetadata) => {
+    setVideoMetadata(metadata)
+    if (metadata.isValid && metadata.channel) {
+      try {
+        const preferredLang = await GetChannelLanguagePreference(
+          platform,
+          metadata.channelId || '',
+          metadata.channel
+        )
+        if (preferredLang) {
+          setSourceLang(preferredLang)
+        }
+      } catch (err) {
+        console.error('Failed to get channel language preference:', err)
+      }
+    }
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       {/* Header */}
@@ -219,9 +237,9 @@ export default function NewTranscriptionPage() {
             
             {/* Video Preview */}
             {url && (
-              <VideoPreview 
+              <VideoPreview
                 url={url}
-                onMetadataLoaded={setVideoMetadata}
+                onMetadataLoaded={handleMetadataLoaded}
                 showDetails={true}
               />
             )}

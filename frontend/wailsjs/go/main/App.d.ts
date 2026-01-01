@@ -13,6 +13,8 @@ export function DownloadTask(arg1:string):Promise<types.Task>;
 
 export function GetAllTasks():Promise<Array<types.Task>>;
 
+export function GetChannelLanguagePreference(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GetDebugInfo():Promise<Record<string, string>>;
 
 export function GetSettings():Promise<types.Settings>;
@@ -26,6 +28,8 @@ export function ListActiveTasks():Promise<Array<types.Task>>;
 export function ParseVideoUrl(arg1:string):Promise<types.VideoMetadata>;
 
 export function RetryTask(arg1:string):Promise<types.Task>;
+
+export function SetChannelLanguagePreference(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function StartTranscription(arg1:string,arg2:string):Promise<types.Task>;
 
