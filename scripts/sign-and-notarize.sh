@@ -49,7 +49,7 @@ fi
 # Build app
 echo -e "${GREEN}📦 Building app...${NC}"
 # Enforce minimum macOS version at link time
-export MACOSX_DEPLOYMENT_TARGET="26.0"
+export MACOSX_DEPLOYMENT_TARGET="14.0"
 wails build -platform darwin/universal -clean
 
 APP_PATH="build/bin/transcube-webapp.app"

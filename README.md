@@ -28,7 +28,7 @@ Before running TransCube, make sure you have these tools installed:
 
 #### Using Homebrew (macOS)
 
-Note: Requires macOS 26 or later.
+Note: Requires macOS 14 (Sonoma) or later.
 
 ```bash
 brew install --cask strrl/collective/transcube
