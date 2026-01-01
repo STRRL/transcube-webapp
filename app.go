@@ -27,11 +27,6 @@ const (
 	ProgressTaskComplete       = 100
 )
 
-const (
-	defaultWindowWidth  = 3464
-	defaultWindowHeight = 2200
-)
-
 // App struct
 type App struct {
 	ctx           context.Context
@@ -85,8 +80,6 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.logger.Info("TransCube starting up")
-
-	runtime.WindowSetSize(a.ctx, defaultWindowWidth, defaultWindowHeight)
 
 	// Log environment info for debugging
 	pathFinder := utils.NewPathFinder()
