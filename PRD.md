@@ -8,7 +8,7 @@
 - 隐私敏感用户：仅本地处理（除下载外），可控与可复现。
 
 ## 范围与约束（MVP）
-- 平台：macOS 26（Apple Silicon）。
+- 平台：macOS 14 Sonoma 或更高版本（Apple Silicon）。
 - 依赖：Homebrew 安装的 `yt-dlp`、`ffmpeg`、`yap`；仅检测缺失并提示，不代安装。
 - 识别：仅用 `yap` CLI（不写任何 native 代码，不用 macOS Speech）。
 - 字幕：仅 SRT；官方字幕优先且只接受英文（含 `en-auto`），其余语言一律忽略；保留官方 `captions.vtt` 与转出的 `subs_en.srt`。

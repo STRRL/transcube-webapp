@@ -118,7 +118,7 @@ VERSION_MODIFIED=true
 echo "Building version $VERSION..."
 # Enforce minimum macOS version at link time when building on macOS
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    export MACOSX_DEPLOYMENT_TARGET="26.0"
+    export MACOSX_DEPLOYMENT_TARGET="14.0"
 fi
 wails build -clean
 
