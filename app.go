@@ -62,14 +62,15 @@ func NewApp() *App {
 		logger:      logger,
 		summarizer:  services.NewOpenRouterClient(),
 		settings: types.Settings{
-			Workspace:       storage.GetWorkspace(),
-			SourceLang:      "en",
-			APIProvider:     "openrouter",
-			APIKey:          "",
-			SummaryLength:   "medium",
-			SummaryLanguage: "en",
-			Temperature:     0.3,
-			MaxTokens:       4096,
+			Workspace:            storage.GetWorkspace(),
+			SourceLang:           "en",
+			APIProvider:          "openrouter",
+			APIKey:               "",
+			SummaryLength:        "medium",
+			SummaryLanguage:      "en",
+			Temperature:          0.3,
+			MaxTokens:            4096,
+			ChannelLanguagePrefs: make(map[string]string),
 		},
 		settingsStore: ss,
 	}
@@ -103,6 +104,10 @@ func (a *App) startup(ctx context.Context) {
 			a.logger.Warn("Failed to load settings", "error", err)
 		} else if loaded != nil {
 			a.settings = *loaded
+			// Initialize ChannelLanguagePrefs if nil (for backward compatibility)
+			if a.settings.ChannelLanguagePrefs == nil {
+				a.settings.ChannelLanguagePrefs = make(map[string]string)
+			}
 			// keep storage workspace in sync
 			if a.settings.Workspace != "" {
 				a.storage.SetWorkspace(a.settings.Workspace)
@@ -152,6 +157,44 @@ func (a *App) UpdateSettings(settings types.Settings) types.Settings {
 		}
 	}
 	return a.settings
+}
+
+// buildChannelKey creates a unique key for channel language preferences
+func buildChannelKey(platform, channelID, channelName string) string {
+	identifier := channelID
+	if identifier == "" {
+		identifier = channelName
+	}
+	return fmt.Sprintf("%s:%s", platform, identifier)
+}
+
+// GetChannelLanguagePreference returns the saved language preference for a channel
+func (a *App) GetChannelLanguagePreference(platform, channelID, channelName string) string {
+	if a.settings.ChannelLanguagePrefs == nil {
+		return a.settings.SourceLang
+	}
+
+	key := buildChannelKey(platform, channelID, channelName)
+	if lang, ok := a.settings.ChannelLanguagePrefs[key]; ok {
+		return lang
+	}
+
+	return a.settings.SourceLang
+}
+
+// SetChannelLanguagePreference saves the language preference for a channel
+func (a *App) SetChannelLanguagePreference(platform, channelID, channelName, lang string) error {
+	if a.settings.ChannelLanguagePrefs == nil {
+		a.settings.ChannelLanguagePrefs = make(map[string]string)
+	}
+
+	key := buildChannelKey(platform, channelID, channelName)
+	a.settings.ChannelLanguagePrefs[key] = lang
+
+	if a.settingsStore != nil {
+		return a.settingsStore.Save(a.settings)
+	}
+	return nil
 }
 
 // DetectPlatform detects which video platform the URL belongs to
@@ -227,6 +270,11 @@ func (a *App) StartTranscription(url string, sourceLang string) (*types.Task, er
 	durationStr := fmt.Sprintf("%02d:%02d", int(duration.Minutes()), int(duration.Seconds())%60)
 
 	platform := a.downloader.DetectPlatform(url)
+
+	// Save channel language preference
+	if err := a.SetChannelLanguagePreference(platform, info.ChannelID, info.Channel, sourceLang); err != nil {
+		a.logger.Warn("Failed to save channel language preference", "error", err)
+	}
 
 	task, err := a.taskManager.CreateTask(
 		url,

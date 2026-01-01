@@ -22,6 +22,10 @@ export function GetAllTasks() {
   return window['go']['main']['App']['GetAllTasks']();
 }
 
+export function GetChannelLanguagePreference(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetChannelLanguagePreference'](arg1, arg2, arg3);
+}
+
 export function GetDebugInfo() {
   return window['go']['main']['App']['GetDebugInfo']();
 }
@@ -48,6 +52,10 @@ export function ParseVideoUrl(arg1) {
 
 export function RetryTask(arg1) {
   return window['go']['main']['App']['RetryTask'](arg1);
+}
+
+export function SetChannelLanguagePreference(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SetChannelLanguagePreference'](arg1, arg2, arg3, arg4);
 }
 
 export function StartTranscription(arg1, arg2) {
