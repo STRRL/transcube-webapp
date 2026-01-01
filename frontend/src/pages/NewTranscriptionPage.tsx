@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -182,7 +182,7 @@ export default function NewTranscriptionPage() {
     startProcessing()
   }
 
-  const handleMetadataLoaded = async (metadata: VideoMetadata) => {
+  const handleMetadataLoaded = useCallback(async (metadata: VideoMetadata) => {
     setVideoMetadata(metadata)
     if (metadata.isValid && metadata.channel) {
       try {
@@ -198,7 +198,7 @@ export default function NewTranscriptionPage() {
         console.error('Failed to get channel language preference:', err)
       }
     }
-  }
+  }, [platform])
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
