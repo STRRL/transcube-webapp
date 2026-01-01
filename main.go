@@ -69,8 +69,8 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:  "transcube-webapp",
-		Width:  512,
-		Height: 384,
+		Width:  1024,
+		Height: 768,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: assetHandler,
