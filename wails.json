@@ -6,6 +6,9 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "preBuildHooks": {
+    "darwin/*": "make -C ../.. speech-assets"
+  },
   "author": {
     "name": "STRRL",
     "email": "im@strrl.dev"
