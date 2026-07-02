@@ -20,6 +20,9 @@ jobs:
       - name: Build speech assets helper
         run: make speech-assets
 
+      - name: Stub frontend assets for go:embed
+        run: mkdir -p frontend/dist && touch frontend/dist/index.html
+
       - name: Build
         run: go build ./...
 
