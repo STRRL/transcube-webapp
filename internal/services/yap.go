@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,11 +11,15 @@ import (
 )
 
 type YapRunner struct {
-	storage *Storage
+	storage      *Storage
+	speechAssets *SpeechAssets
 }
 
 func NewYapRunner(storage *Storage) *YapRunner {
-	return &YapRunner{storage: storage}
+	return &YapRunner{
+		storage:      storage,
+		speechAssets: NewSpeechAssets(),
+	}
 }
 
 // Transcribe uses yap to transcribe audio to SRT
@@ -25,6 +30,16 @@ func (y *YapRunner) Transcribe(audioPath string, outputDir string, language stri
 		"audioPath", audioPath,
 		"language", language,
 		"locale", locale)
+
+	// yap cannot download missing speech models itself (it fails with
+	// CancellationError), so install them up front. A failure here is logged
+	// but not fatal: the model may already be present even if the check fails.
+	if err := y.speechAssets.EnsureInstalled(context.Background(), locale); err != nil {
+		slog.Warn("Speech model preinstall failed, continuing with yap", "locale", locale, "error", err)
+		if logErr := y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Speech model preinstall failed: %v", err)); logErr != nil {
+			slog.Warn("save transcription log", "error", logErr)
+		}
+	}
 
 	// Output file name based on language
 	outputFile := filepath.Join(outputDir, fmt.Sprintf("subs_%s.srt", language))
@@ -49,7 +64,14 @@ func (y *YapRunner) Transcribe(audioPath string, outputDir string, language stri
 		if logErr := y.storage.SaveLog(outputDir, "asr", fmt.Sprintf("Transcription failed: %s", string(output))); logErr != nil {
 			slog.Warn("save transcription log", "error", logErr)
 		}
-		return fmt.Errorf("transcription failed: %v", err)
+		detail := strings.TrimSpace(string(output))
+		if len(detail) > 300 {
+			detail = detail[:300] + "…"
+		}
+		if detail == "" {
+			return fmt.Errorf("transcription failed: %v", err)
+		}
+		return fmt.Errorf("transcription failed: %v: %s", err, detail)
 	}
 
 	// Check if output file was created

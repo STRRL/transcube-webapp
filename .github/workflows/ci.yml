@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  go-macos:
+    # macos-26 ships the Xcode 26 SDK required to compile the
+    # SpeechTranscriber helper (make speech-assets).
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build speech assets helper
+        run: make speech-assets
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  go-linux:
+    # The app itself is macOS-only; this job only guards the non-darwin
+    # build-tag stubs so the internal packages stay compilable everywhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build internal packages
+        run: go build ./internal/...
+
+      - name: Vet internal packages
+        run: go vet ./internal/...

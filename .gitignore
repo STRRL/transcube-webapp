@@ -6,3 +6,6 @@ frontend/dist
 
 # Environment variables
 .env
+
+# Compiled Swift helper embedded into the Go binary
+internal/services/bin/
