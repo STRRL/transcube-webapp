@@ -94,3 +94,14 @@ Built with Wails v2" \
 fi
 
 echo "Release created/updated: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$GIT_TAG"
+
+echo ""
+echo "Updating Homebrew cask..."
+if ./scripts/update-homebrew.sh "$VERSION"; then
+    echo ""
+    echo "Homebrew cask updated successfully!"
+else
+    echo ""
+    echo "Warning: Failed to update Homebrew cask. You may need to update it manually."
+    echo "Run: ./scripts/update-homebrew.sh $VERSION"
+fi
